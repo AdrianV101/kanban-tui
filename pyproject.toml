@@ -53,6 +53,9 @@ jira = [
 mcp = [
     "pycli-mcp>=0.3.0",
 ]
+vault = [
+    "pyyaml>=6.0",
+]
 
 
 [dependency-groups]
@@ -66,6 +69,7 @@ dev = [
     "ruff>=0.13.1",
     "mypy>=1.18.2",
     "types-python-dateutil>=2.9.0.20250822",
+    "types-PyYAML",
     "prek>=0.2.25",
 ]
 
