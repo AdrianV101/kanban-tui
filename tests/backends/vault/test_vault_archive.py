@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from kanban_tui.backends.vault.backend import VaultBackend
+import pytest
+
+from kanban_tui.backends.vault.backend import VaultBackend, VaultWriteError
 from kanban_tui.config import VaultBackendSettings
 from tests.conftest import write_task_note
 
@@ -12,7 +14,9 @@ def make_backend(vault: Path) -> VaultBackend:
 def test_archiving_keeps_the_note(tmp_path: Path):
     vault = tmp_path / "Notes"
     note = write_task_note(
-        vault, "01-Projects/Alpha/tasks/note.md", {"status": "active"}
+        vault,
+        "01-Projects/Alpha/tasks/note.md",
+        {"status": "active", "board": "doing"},
     )
     backend = make_backend(vault)
     (task,) = backend.get_tasks_on_active_board()
@@ -20,9 +24,32 @@ def test_archiving_keeps_the_note(tmp_path: Path):
     backend.delete_task(task.task_id)
 
     assert note.exists()
-    assert "\nstatus: cancelled\n" in note.read_text()
+    assert "\nstatus: cancelled\nboard: doing\n" in note.read_text()
     visible = {c.column_id for c in backend.get_columns() if c.visible}
     assert [t for t in backend.get_tasks_on_active_board() if t.column in visible] == []
+
+
+@pytest.mark.parametrize(
+    "old,new", [("active", "done"), ("board: doing", "board: in-review")]
+)
+def test_archiving_is_refused_when_the_column_changed_on_disk(
+    tmp_path: Path, old: str, new: str
+):
+    vault = tmp_path / "Notes"
+    note = write_task_note(
+        vault,
+        "01-Projects/Alpha/tasks/note.md",
+        {"status": "active", "board": "doing"},
+    )
+    backend = make_backend(vault)
+    (task,) = backend.get_tasks_on_active_board()
+    note.write_text(note.read_text().replace(old, new))
+    before = note.read_bytes()
+
+    with pytest.raises(VaultWriteError):
+        backend.delete_task(task.task_id)
+
+    assert note.read_bytes() == before
 
 
 def test_the_obsidian_link_encodes_vault_and_path(tmp_path: Path):

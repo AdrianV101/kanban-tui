@@ -5,7 +5,7 @@ import pytest
 from freezegun import freeze_time
 
 from kanban_tui.backends.vault import backend as backend_module
-from kanban_tui.backends.vault.backend import STATUS_COLUMNS, VaultBackend
+from kanban_tui.backends.vault.backend import VaultBackend
 from kanban_tui.config import VaultBackendSettings
 from tests.conftest import write_task_note
 
@@ -31,18 +31,63 @@ def move_only_card(backend: VaultBackend, column: int):
 
 
 @freeze_time(FROZEN_DAY)
-@pytest.mark.parametrize("status,column", list(STATUS_COLUMNS.items()))
-def test_a_move_writes_the_columns_status(test_vault: Path, status: str, column: int):
-    start = "done" if status == "proposed" else "proposed"
-    write_task_note(test_vault, NOTE, {"status": start, "finished": FROZEN_DAY})
+@pytest.mark.parametrize(
+    "start,column,status,board",
+    [
+        ({"status": "done", "finished": FROZEN_DAY}, 1, "pending", "proposed"),
+        ({"status": "done", "finished": FROZEN_DAY}, 2, "pending", "ready"),
+        (
+            {"status": "pending", "board": "ready"},
+            3,
+            "active",
+            "doing",
+        ),
+        ({"status": "pending"}, 4, "active", "in-review"),
+        (
+            {"status": "active", "board": "doing"},
+            5,
+            "done",
+            "doing",
+        ),
+        (
+            {"status": "active", "board": "doing"},
+            6,
+            "cancelled",
+            "doing",
+        ),
+        (
+            {"status": "done", "board": "ready", "finished": FROZEN_DAY},
+            2,
+            "pending",
+            "ready",
+        ),
+        ({"status": "active"}, 5, "done", None),
+        ({"status": "active"}, 6, "cancelled", None),
+    ],
+)
+def test_a_move_writes_the_columns_fields(
+    test_vault: Path,
+    start: dict[str, str],
+    column: int,
+    status: str,
+    board: str | None,
+):
+    path = write_task_note(test_vault, NOTE, start)
     backend = make_backend(test_vault)
 
     move_only_card(backend, column)
 
+    text = path.read_text()
+    assert f"\nstatus: {status}\n" in text
+    if board is None:
+        assert "\nboard:" not in text
+    else:
+        assert f"\nboard: {board}\n" in text
     (task,) = backend.get_tasks_on_active_board()
     assert task.column == column
     assert task.metadata["status"] == status
-    assert f"\nstatus: {status}\n" in (test_vault / NOTE).read_text()
+    assert task.metadata["board"] == board
+    assert task.metadata["column"] == column
 
 
 @freeze_time(FROZEN_DAY)
@@ -51,31 +96,31 @@ def test_a_move_writes_the_columns_status(test_vault: Path, status: str, column:
     [
         (
             "---\ntype: task\nstatus: pending\n---\nbody\n",
-            "---\ntype: task\nstatus: active\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
         ),
         (
             '---\ntype: task\nstatus: "pending"\n---\nbody\n',
-            '---\ntype: task\nstatus: "active"\n---\nbody\n',
+            '---\ntype: task\nstatus: "active"\nboard: doing\n---\nbody\n',
         ),
         (
             "---\ntype: task\nstatus: pending  # note\n---\nbody\n",
-            "---\ntype: task\nstatus: active  # note\n---\nbody\n",
+            "---\ntype: task\nstatus: active  # note\nboard: doing\n---\nbody\n",
         ),
         (
             "---\ntype: task\nstatus: pending\n---\n",
-            "---\ntype: task\nstatus: active\n---\n",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\n",
         ),
         (
             "---\ntype: task\nstatus:\n---\nbody\n",
-            "---\ntype: task\nstatus: active\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
         ),
         (
             "---\ntype: task\nstatus: \n---\nbody\n",
-            "---\ntype: task\nstatus: active\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
         ),
         (
             "---\ntype: task\nstatus: # c\n---\nbody\n",
-            "---\ntype: task\nstatus: active # c\n---\nbody\n",
+            "---\ntype: task\nstatus: active # c\nboard: doing\n---\nbody\n",
         ),
         (
             (
@@ -83,24 +128,48 @@ def test_a_move_writes_the_columns_status(test_vault: Path, status: str, column:
                 "# T\n\n- [[Some Note]]\n- [[Other|alias]]\n"
             ),
             (
-                "---\ntype: task\ntags:\n  - a\n  - b\nstatus: active\n---\n"
-                "# T\n\n- [[Some Note]]\n- [[Other|alias]]\n"
+                "---\ntype: task\ntags:\n  - a\n  - b\nstatus: active\nboard: doing\n"
+                "---\n# T\n\n- [[Some Note]]\n- [[Other|alias]]\n"
             ),
         ),
         (
             "---\ntype: task\nstatus: pending\n---\nno trailing newline",
-            "---\ntype: task\nstatus: active\n---\nno trailing newline",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nno trailing newline",
         ),
         (
             "---\r\ntype: task\r\nstatus: pending\r\n---\r\nbody\r\n",
-            "---\r\ntype: task\r\nstatus: active\r\n---\r\nbody\r\n",
+            "---\r\ntype: task\r\nstatus: active\r\nboard: doing\r\n---\r\nbody\r\n",
+        ),
+        (
+            "---\ntype: task\nstatus: pending\nboard: doing\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
+        ),
+        (
+            "---\ntype: task\nstatus: pending\nboard: ready\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
+        ),
+        (
+            '---\ntype: task\nstatus: pending\nboard: "ready"\n---\nbody\n',
+            '---\ntype: task\nstatus: active\nboard: "doing"\n---\nbody\n',
+        ),
+        (
+            "---\ntype: task\nstatus: pending\nboard: ready  # note\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nboard: doing  # note\n---\nbody\n",
+        ),
+        (
+            "---\ntype: task\nstatus: pending\nboard:\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
+        ),
+        (
+            "---\ntype: task\nstatus: pending\nprs: []\n---\nbody\n",
+            "---\ntype: task\nstatus: active\nprs: []\nboard: doing\n---\nbody\n",
         ),
     ],
 )
-def test_only_the_status_line_changes(test_vault: Path, original: str, expected: str):
+def test_only_the_owned_lines_change(test_vault: Path, original: str, expected: str):
     path = write_raw(test_vault, original)
 
-    move_only_card(make_backend(test_vault), STATUS_COLUMNS["active"])
+    move_only_card(make_backend(test_vault), 3)
 
     assert path.read_bytes().decode() == expected
 
@@ -132,18 +201,27 @@ def test_entering_done_adds_only_the_finished_line(
 ):
     path = write_raw(test_vault, original)
 
-    move_only_card(make_backend(test_vault), STATUS_COLUMNS["done"])
+    move_only_card(make_backend(test_vault), 5)
 
     assert path.read_bytes().decode() == expected
 
 
-def test_a_changed_status_on_disk_refuses_the_move(test_vault: Path):
-    path = write_task_note(test_vault, NOTE, {"status": "pending"})
+@pytest.mark.parametrize(
+    "start,old,new",
+    [
+        ({"status": "pending"}, "pending", "active"),
+        ({"status": "pending", "board": "ready"}, "board: ready", "board: proposed"),
+    ],
+)
+def test_a_changed_column_on_disk_refuses_the_move(
+    test_vault: Path, start: dict[str, str], old: str, new: str
+):
+    path = write_task_note(test_vault, NOTE, start)
     backend = make_backend(test_vault)
     (task,) = backend.get_tasks_on_active_board()
-    path.write_text(path.read_text().replace("pending", "in-review"))
+    path.write_text(path.read_text().replace(old, new))
     before = path.read_bytes()
-    task.column = STATUS_COLUMNS["active"]
+    task.column = 3
 
     result = backend.update_task_status(task)
 
@@ -162,7 +240,7 @@ def test_other_changes_on_disk_are_kept(test_vault: Path):
         .replace("# Old", "# New body")
         .replace("type: task", "type: task\npriority: high")
     )
-    task.column = STATUS_COLUMNS["active"]
+    task.column = 3
 
     backend.update_task_status(task)
 
@@ -182,7 +260,7 @@ def test_a_missing_note_refuses_the_move(test_vault: Path, how: str):
     else:
         path.rename(path.with_name("renamed.md"))
     files_before = sorted(test_vault.rglob("*"))
-    task.column = STATUS_COLUMNS["active"]
+    task.column = 3
 
     result = backend.update_task_status(task)
 
@@ -199,7 +277,7 @@ def test_a_status_written_during_the_move_is_not_overwritten(
     path = write_task_note(test_vault, NOTE, {"status": "pending"})
     backend = make_backend(test_vault)
     (task,) = backend.get_tasks_on_active_board()
-    task.column = STATUS_COLUMNS["active"]
+    task.column = 3
     changed: list[bool] = []
 
     def change_note_once() -> None:
@@ -207,7 +285,7 @@ def test_a_status_written_during_the_move_is_not_overwritten(
             return
         changed.append(True)
         original = Path.read_bytes(path)
-        path.write_bytes(original.replace(b"pending", b"in-review"))
+        path.write_bytes(original.replace(b"pending", b"cancelled"))
 
     if when == "after_read":
         real_read_bytes = Path.read_bytes
@@ -242,7 +320,7 @@ def test_a_status_written_during_the_move_is_not_overwritten(
     assert isinstance(result, dict)
     assert result["success"] is False
     assert NOTE in result["message"]
-    assert "\nstatus: in-review\n" in path.read_text()
+    assert "\nstatus: cancelled\n" in path.read_text()
     assert not list(path.parent.glob("*.tmp"))
 
 
@@ -265,7 +343,7 @@ def test_the_new_content_is_flushed_to_disk_before_it_replaces_the_note(
     monkeypatch.setattr(backend_module.os, "fsync", fsync)
     monkeypatch.setattr(backend_module.os, "replace", replace)
 
-    move_only_card(backend, STATUS_COLUMNS["active"])
+    move_only_card(backend, 3)
 
     assert calls == ["fsync", "replace"]
 
@@ -278,7 +356,7 @@ def test_a_symlinked_note_refuses_the_move_and_stays_a_link(test_vault: Path):
     link.symlink_to(target)
     backend = make_backend(test_vault)
 
-    result = move_only_card(backend, STATUS_COLUMNS["active"])
+    result = move_only_card(backend, 3)
 
     assert isinstance(result, dict)
     assert result["success"] is False

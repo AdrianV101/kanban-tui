@@ -83,7 +83,7 @@ async def test_pressing_a_move_key_writes_the_note(
 
         assert find_card(vault_app, "two").task_.column == 3
         text = (test_vault / "01-Projects/Alpha/tasks/two.md").read_text()
-        assert "\nstatus: active\n" in text
+        assert "\nstatus: active\nboard: doing\n" in text
 
 
 async def test_a_refused_move_is_shown(vault_app: KanbanTui, test_vault: Path):
@@ -91,7 +91,7 @@ async def test_a_refused_move_is_shown(vault_app: KanbanTui, test_vault: Path):
     async with vault_app.run_test(size=APP_SIZE) as pilot:
         await pilot.pause()
         await focus_card(vault_app, pilot, "two")
-        path.write_text(path.read_text().replace("pending", "proposed"))
+        path.write_text(path.read_text().replace("board: ready", "board: proposed"))
 
         await pilot.press("L")
         await pilot.pause()
@@ -111,7 +111,9 @@ async def test_a_new_card_lands_in_the_focused_column(
     expected_column: int,
 ):
     write_task_note(
-        test_vault, "01-Projects/Alpha/tasks/zero.md", {"status": "proposed"}
+        test_vault,
+        "01-Projects/Alpha/tasks/zero.md",
+        {"status": "pending", "board": "proposed"},
     )
     if focused_title is None:
         for note in (test_vault / "01-Projects/Alpha/tasks").glob("*.md"):
@@ -191,7 +193,7 @@ async def test_a_refused_archive_is_shown(vault_app: KanbanTui, test_vault: Path
     async with vault_app.run_test(size=APP_SIZE) as pilot:
         await pilot.pause()
         await focus_card(vault_app, pilot, "two")
-        path.write_text(path.read_text().replace("pending", "proposed"))
+        path.write_text(path.read_text().replace("board: ready", "board: proposed"))
         changed = path.read_text()
 
         await pilot.press("d")

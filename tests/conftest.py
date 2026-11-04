@@ -173,7 +173,11 @@ def vault_app(
 ) -> Generator[KanbanTui, None, None]:
     os.environ["TEXTUAL_ANIMATION"] = "none"
     write_task_note(test_vault, "01-Projects/Alpha/tasks/one.md", {"status": "active"})
-    write_task_note(test_vault, "01-Projects/Alpha/tasks/two.md", {"status": "pending"})
+    write_task_note(
+        test_vault,
+        "01-Projects/Alpha/tasks/two.md",
+        {"status": "pending", "board": "ready"},
+    )
     app = KanbanTui(config_path=test_config_path, database_path=test_database_path)
     app.config.backend.mode = Backends.VAULT
     app.config.backend.vault_settings.vault_path = test_vault.as_posix()

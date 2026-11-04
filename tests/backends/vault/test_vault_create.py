@@ -37,6 +37,26 @@ def list_files(vault: Path) -> set[Path]:
 
 @freeze_time(FROZEN_DAY)
 @pytest.mark.parametrize(
+    "column,status,board",
+    [(1, "pending", "proposed"), (2, "pending", "ready"), (3, "active", "doing")],
+)
+def test_a_new_card_carries_its_columns_fields(
+    test_vault: Path, column: int, status: str, board: str
+):
+    backend = seed_vault(test_vault)
+
+    task = backend.create_new_task("Fresh", "", column=column)
+
+    note = read_task_note(test_vault / "00-Inbox/fresh.md", test_vault)
+    assert note is not None
+    assert (note.status, note.board) == (status, board)
+    assert note.status in {"pending", "active", "done", "cancelled"}
+    assert task.column == column
+    assert task.metadata["board"] == board
+
+
+@freeze_time(FROZEN_DAY)
+@pytest.mark.parametrize(
     "category_name,personal_notes,folder,project,due_input",
     [
         ("Work", True, WORK_TASKS, "Work", datetime(2026, 12, 1)),
@@ -74,7 +94,6 @@ def test_a_new_card_becomes_a_full_task_note(
     note = read_task_note(path, test_vault)
     assert note is not None
     assert note.title == "Write the report"
-    assert note.status == "active"
     assert note.project == project
     assert note.created == date(2026, 11, 4)
     assert note.due == (date(2026, 12, 1) if due_input else None)

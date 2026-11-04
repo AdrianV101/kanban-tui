@@ -183,19 +183,20 @@ uv tool install 'kanban-tui[web]'
 
 ## Vault backend
 
-The `vault` backend shows the task notes of an Obsidian vault as one board. The note's `status`
-frontmatter field decides the column:
+The `vault` backend shows the task notes of an Obsidian vault as one board. The note's `status` and
+`board` frontmatter fields decide the column:
 
-| status      | column    |
-|-------------|-----------|
-| `proposed`  | Proposed  |
-| `pending`   | Ready     |
-| `active`    | Doing     |
-| `in-review` | In Review |
-| `done`      | Done      |
-| `cancelled` | Archive (hidden) |
+| status      | board       | column           |
+|-------------|-------------|------------------|
+| `pending`   | `proposed`, absent or anything else | Proposed |
+| `pending`   | `ready`     | Ready            |
+| `active`    | `doing`, absent or anything else    | Doing    |
+| `active`    | `in-review` | In Review        |
+| `done`      | ignored     | Done             |
+| `cancelled` | ignored     | Archive (hidden) |
 
 A `type: task` note with a missing or unknown status shows in Proposed. Moving such a card is refused until the note has a `status` line. A note without `type: task` is not a task note and is skipped.
+The optional `prs` field is ignored by the board and never written.
 Done cards stay visible for `done_visible_days` after their `finished` date.
 Cards are coloured by project: the folder name under `01-Projects/`, or the `project` field of the note.
 Notes in `00-Inbox` belong to the `personal_category`.
@@ -231,12 +232,14 @@ Work = "#4C9AFF"
 | `personal_category` | `"Personal"`                                     | Category for notes in `00-Inbox`. |
 
 What the board can do:
-- Move a card between columns. This changes only the `status` line of the note, plus a
-  `finished: YYYY-MM-DD` line when the card enters Done. Every other byte is kept.
-  If the status on disk changed since the board loaded, the move is refused and the board asks you to reload.
-- Create a card with `n`. The note is written from `05-Templates/task.md` in the project's tasks folder,
+- Move a card between columns. This changes only the `status` and `board` lines of the note, plus a
+  `finished: YYYY-MM-DD` line when the card enters Done. A missing `board` line is added at the end of the
+  frontmatter. Moves into Done and Archive leave `board` as it is. Every other byte is kept.
+  If the column on disk, worked out from `status` and `board`, changed since the board loaded,
+  the move is refused and the board asks you to reload.
+- Create a card with `n`. The note is written from `05-Templates/task.md` with the column's `status` and `board`, in the project's tasks folder,
   or in `00-Inbox` when no project is chosen.
-- Archive a card with `d`. This sets the status to `cancelled`. The board never deletes a note file.
+- Archive a card with `d`. This sets the status to `cancelled` and leaves `board` as it is. The board never deletes a note file.
 - Open the note in Obsidian with `e`, enter or a click on the card.
 
 Every refused write shows as an error. Notes that cannot be read are listed as warnings.

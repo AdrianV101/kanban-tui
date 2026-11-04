@@ -16,7 +16,7 @@ from kanban_tui.backends.vault.notes import (
     parse_task_note,
     read_task_note,
     render_new_task,
-    with_status,
+    with_card_fields,
 )
 from kanban_tui.classes.board import Board
 from kanban_tui.classes.category import Category
@@ -315,7 +315,7 @@ class VaultBackend(Backend):
     ) -> Task:
         if column not in COLUMN_FIELDS:
             raise VaultWriteError(f"unknown column {column}")
-        status = fields_for_column(column)[0]
+        status, board = fields_for_column(column)
         due = self._read_due_date(due_date)
         project, folder = self._resolve_destination(category)
 
@@ -327,7 +327,7 @@ class VaultBackend(Backend):
             ) from error
         try:
             content = render_new_task(
-                template, title, status, project, due, description, date.today()
+                template, title, status, board, project, due, description, date.today()
             )
         except ValueError as error:
             raise VaultWriteError(f"{TEMPLATE_PATH}: {error}") from error
@@ -401,8 +401,8 @@ class VaultBackend(Backend):
         append_mode: TaskAppendModes | None = None,
     ) -> Task | dict[str, Any]:
         rel_path = new_task.metadata["note_path"]
-        scanned_status = new_task.metadata["status"]
-        target_status = fields_for_column(new_task.column)[0]
+        scanned_column = new_task.metadata["column"]
+        target_status, target_board = fields_for_column(new_task.column)
         path = self._vault_root / rel_path
         if path.is_symlink():
             return self._refuse(rel_path, "note is a symlink, move it in Obsidian")
@@ -416,7 +416,7 @@ class VaultBackend(Backend):
             return self._refuse(rel_path, f"cannot read note ({error})")
         if current is None:
             return self._refuse(rel_path, "note is no longer a task note")
-        if current.status != scanned_status:
+        if column_for(current.status, current.board) != scanned_column:
             return self._refuse(
                 rel_path,
                 f"status changed on disk to {current.status!r}, reload the board",
@@ -424,14 +424,18 @@ class VaultBackend(Backend):
 
         finished = date.today() if target_status == "done" else None
         try:
-            updated = with_status(raw, target_status, finished)
+            updated = with_card_fields(raw, target_status, target_board, finished)
             self._replace_file(path, updated, read_stat)
         except VaultWriteError as error:
             return self._refuse(rel_path, str(error))
         except (ValueError, OSError) as error:
             return self._refuse(rel_path, f"cannot write note ({error})")
 
-        new_task.metadata["status"] = target_status
+        new_task.metadata.update(
+            status=target_status,
+            board=target_board if target_board is not None else current.board,
+            column=new_task.column,
+        )
         self._scan()
         return self.get_task_by_id(new_task.task_id) or new_task
 

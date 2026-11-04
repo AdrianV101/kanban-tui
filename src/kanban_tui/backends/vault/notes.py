@@ -129,15 +129,23 @@ def parse_task_note(text: str, rel_path: str, fallback_title: str) -> TaskNote |
     )
 
 
-STATUS_LINE = re.compile(r"^(status:[ \t]*)(\"[^\"\n]*\"|'[^'\n]*'|[^\s#]*)(.*)$")
-FINISHED_LINE = re.compile(r"^(finished:[ \t]*)(\"[^\"\n]*\"|'[^'\n]*'|[^\s#]*)(.*)$")
+def field_line(name: str) -> re.Pattern[str]:
+    return re.compile(rf"^({name}:[ \t]*)(\"[^\"\n]*\"|'[^'\n]*'|[^\s#]*)(.*)$")
 
 
-def with_status(text: str, status: str, finished: date | None) -> str:
-    """Return text with the frontmatter `status` value replaced.
+STATUS_LINE = field_line("status")
+BOARD_LINE = field_line("board")
+FINISHED_LINE = field_line("finished")
 
-    Quotes, trailing comments, line endings and every other byte are kept. When
-    `finished` is given, its line is replaced or added as the last frontmatter line.
+
+def with_card_fields(
+    text: str, status: str, board: str | None, finished: date | None
+) -> str:
+    """Return text with the frontmatter `status` value replaced, and optionally `board`.
+
+    Quotes, trailing comments, line endings and every other byte are kept. A `board`
+    that is not None is replaced, or added as the last frontmatter line; None leaves
+    any `board` line alone. `finished` is handled the same way.
 
     Raises:
         ValueError: the text has no frontmatter or no `status` line in it.
@@ -156,14 +164,18 @@ def with_status(text: str, status: str, finished: date | None) -> str:
     if closing is None:
         raise ValueError("note has no frontmatter")
 
-    status_index = finished_index = None
+    found: dict[str, int] = {}
     for index in range(1, closing):
         content = lines[index].rstrip("\r\n")
-        if status_index is None and STATUS_LINE.match(content):
-            status_index = index
-        elif finished_index is None and FINISHED_LINE.match(content):
-            finished_index = index
-    if status_index is None:
+        for name, pattern in (
+            ("status", STATUS_LINE),
+            ("board", BOARD_LINE),
+            ("finished", FINISHED_LINE),
+        ):
+            if name not in found and pattern.match(content):
+                found[name] = index
+                break
+    if "status" not in found:
         raise ValueError("note has no status line")
 
     def replace_value(index: int, pattern: re.Pattern[str], value: str) -> None:
@@ -178,14 +190,20 @@ def with_status(text: str, status: str, finished: date | None) -> str:
         quote = old_value[:1] if old_value[:1] in "\"'" else ""
         lines[index] = f"{prefix}{quote}{value}{quote}{comment}{line[len(content) :]}"
 
-    replace_value(status_index, STATUS_LINE, status)
-    if finished is not None:
-        if finished_index is not None:
-            replace_value(finished_index, FINISHED_LINE, finished.isoformat())
+    replace_value(found["status"], STATUS_LINE, status)
+    for name, pattern, value in (
+        ("board", BOARD_LINE, board),
+        ("finished", FINISHED_LINE, finished.isoformat() if finished else None),
+    ):
+        if value is None:
+            continue
+        if name in found:
+            replace_value(found[name], pattern, value)
         else:
             previous = lines[closing - 1]
             ending = previous[len(previous.rstrip("\r\n")) :]
-            lines.insert(closing, f"finished: {finished.isoformat()}{ending}")
+            lines.insert(closing, f"{name}: {value}{ending}")
+            closing += 1
     return "".join(lines)
 
 
@@ -204,6 +222,7 @@ def render_new_task(
     template_text: str,
     title: str,
     status: str,
+    board: str | None,
     project: str | None,
     due: date | None,
     description: str,
@@ -211,8 +230,8 @@ def render_new_task(
 ) -> str:
     """Fill the vault's task template for a new note.
 
-    Template placeholders are substituted; `status` is always set, `project` and
-    `due` only when given. A non-empty `description` goes under `## Description`.
+    Template placeholders are substituted; `status` is always set, `board`, `project`
+    and `due` only when given. A non-empty `description` goes under `## Description`.
 
     Raises:
         ValueError: the template has no frontmatter.
@@ -229,6 +248,8 @@ def render_new_task(
         raise ValueError("template has no frontmatter")
 
     fields: dict[str, str] = {"status": status}
+    if board is not None:
+        fields["board"] = board
     if project is not None:
         fields["project"] = (
             project if SAFE_YAML_SCALAR.match(project) else json.dumps(project)
