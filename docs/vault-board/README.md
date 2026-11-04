@@ -14,8 +14,8 @@ A kanban-tui backend that shows an Obsidian vault's task notes as one board, plu
 | 1 | Vault backend in this fork ([plan](plans/2026-11-04-vault-backend.md)) | Done. Draft PR #1. |
 | 1b | Columns from `status` plus a `board` field ([plan](plans/2026-11-04-board-field.md)) | Done |
 | 2 | Board rules for Claude in the owner's global `~/.claude/CLAUDE.md` | Done |
-| 3 | Morning capture sweep and hourly PR merge check on the Mac mini | Not started |
-| 4 | Phone capture Shortcut | Not started |
+| 3 | Morning capture sweep and hourly PR merge check on the Mac mini ([plan](plans/2026-11-04-mac-mini-jobs.md)) | Plan written, awaiting approval |
+| 4 | Phone capture Shortcut | Folded into the part 3 plan (Task 6 doc, Task 7 setup) |
 
 ## Install on a device
 

@@ -64,5 +64,4 @@ vault-pkm is unchanged.
 
 ## Next
 
-- Part 3: morning capture sweep (`Capture.md`, Granola, Plaud) and the hourly PR merge check on the Mac mini.
-- Part 4: phone capture Shortcut.
+- Parts 3 and 4: [plans/2026-11-04-mac-mini-jobs.md](plans/2026-11-04-mac-mini-jobs.md), awaiting the owner's approval. The jobs stay on the Mac mini at the owner's choice, which needs the work GitHub account, Granola and Plaud signed in there.
