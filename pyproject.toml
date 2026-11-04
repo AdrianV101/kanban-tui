@@ -42,6 +42,7 @@ Changelog = "https://github.com/Zaloog/kanban-tui/blob/main/CHANGELOG.md"
 [project.scripts]
 ktui = "kanban_tui.cli:cli"
 kanban-tui = "kanban_tui.cli:cli"
+vault-board = "kanban_tui.backends.vault.jobs.cli:main"
 
 [project.optional-dependencies]
 web = [

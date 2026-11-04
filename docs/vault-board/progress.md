@@ -62,6 +62,10 @@ Four rules were added under "Kanban board (vault task notes)" in the owner's glo
 
 vault-pkm is unchanged.
 
+## Part 3 and 4: Mac jobs and phone capture (code done, 2026-11-04)
+
+The `vault-board` command has two subcommands: `pr-check` moves In Review cards whose PRs have closed, and `sweep` turns `Capture.md` lines and meeting action items into Proposed drafts. launchd templates, `install.sh`, the config example and the phone Shortcut how-to are in `docs/vault-board/jobs/`. Mac setup steps: [jobs/setup.md](jobs/setup.md).
+
 ## Next
 
-- Parts 3 and 4: [plans/2026-11-04-mac-mini-jobs.md](plans/2026-11-04-mac-mini-jobs.md), awaiting the owner's approval. The jobs stay on the Mac mini at the owner's choice, which needs the work GitHub account, Granola and Plaud signed in there.
+Mac setup and the phone test remain.
