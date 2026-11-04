@@ -35,6 +35,34 @@ Each ruling ends with what it costs if wrong.
 
 vault-pkm is a published plugin with other users, so the board must not need plugin changes. Its original `proposed` and `in-review` statuses are replaced by vault-pkm's four statuses plus a `board` field (see [design.md](design.md)). That is part 1b.
 
-## Part 1b: board field (in progress)
+## Part 1b: board field (done, 2026-11-04)
 
-Plan: [plans/2026-11-04-board-field.md](plans/2026-11-04-board-field.md). The ledger is in `ledger-board-field.md`.
+Plan: [plans/2026-11-04-board-field.md](plans/2026-11-04-board-field.md). Ledger: [ledger-board-field.md](ledger-board-field.md). Commits `9bb80b3`..`81e9fd4`.
+
+- Columns come from vault-pkm's four statuses plus a `board` field. No path writes any other status.
+- 429 tests pass. ruff is clean. mypy stays at 152.
+- A headless check against a copy of the vault's task folders gave:
+  - Proposed 58, Doing 15, Done 1, Archive 48, with no warnings.
+  - A move to Ready, then In Review, changed only the `status` line and added one `board` line.
+  - Only that note changed.
+- The final review said it's ready for daily use. Its one wording fix (a refusal now names both status and board) is in `81e9fd4`.
+
+### Rulings made during part 1b
+
+1. Tracking docs and the ledger are committed here, with personal details removed. Briefs, reports and diffs stay in the git-ignored workspace. Cost: per-task reports aren't visible on other devices.
+2. One fix wave for the user-visible refusal wording only. The other minors stay deferred: duplicated mapping constants, one vacuous test row, case-sensitive values, and an unknown status in the same column being overwritten by a move. Cost: polish later.
+
+## Part 2: local Claude rules (done, 2026-11-04)
+
+Four rules were added under "Kanban board (vault task notes)" in the owner's global `~/.claude/CLAUDE.md`:
+- Leave `board` out of tasks Claude creates.
+- Never set `done`.
+- Set `board: in-review` and record `prs` when opening a PR.
+- Pass these rules to pkm-capture.
+
+vault-pkm is unchanged.
+
+## Next
+
+- Part 3: morning capture sweep (`Capture.md`, Granola, Plaud) and the hourly PR merge check on the Mac mini.
+- Part 4: phone capture Shortcut.

@@ -123,7 +123,7 @@
 
 **Rules for `~/.claude/CLAUDE.md` (draft):**
 
-- Task notes carry an optional `board` field for the kanban board: `proposed`, `ready`, `doing` or `in-review`. Leave it out of tasks you create, so they land in Proposed. Set `board: ready` only on a task the owner asked for himself.
-- Never set a task's `status` to `done`. the owner moves cards to Done himself. The PR merge job is the only other thing that sets it.
+- Task notes carry an optional `board` field for the kanban board: `proposed`, `ready`, `doing` or `in-review`. Leave it out of tasks you create, so they land in Proposed. Set `board: ready` only on a task the owner asked for directly.
+- Never set a task's `status` to `done`. Only the owner moves cards to Done. The PR merge job is the only other thing that sets it.
 - When opening a draft PR for a task, set `board: in-review` and add the PR URL to the note's `prs` list. If the session has no task note, create one with `status: active`, `board: in-review` and the PR in `prs`.
 - When dispatching pkm-capture, include these rules in its prompt.

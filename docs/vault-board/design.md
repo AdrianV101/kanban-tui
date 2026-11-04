@@ -86,7 +86,7 @@ vault-pkm is not changed. Other people use the plugin without a board, and none 
 - When starting work on a task in a session, `status: active` is fine (tackle-task already does this).
 - When opening a draft PR for a task, set `board: in-review` and add the PR URL to the note's `prs` list. If the session has no task, create one with `status: active`, `board: in-review` and the PR in `prs`.
 - When dispatching pkm-capture, pass these rules in the prompt.
-- A task the owner himself asks for gets `board: ready`.
+- A task the owner asks for directly gets `board: ready`.
 
 The task note gains two optional fields, `board` and `prs` (a list of PR URLs). vault-pkm accepts both because it only validates `status` and `priority`.
 
