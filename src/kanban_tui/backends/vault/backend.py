@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
 from kanban_tui.backends.base import Backend
-from kanban_tui.backends.vault.notes import NoteReadError, TaskNote, read_task_note
+from kanban_tui.backends.vault.notes import (
+    NoteReadError,
+    TaskNote,
+    read_task_note,
+    with_status,
+)
 from kanban_tui.classes.board import Board
 from kanban_tui.classes.category import Category
 from kanban_tui.classes.column import Column
 from kanban_tui.classes.task import Task
-from kanban_tui.config import VaultBackendSettings
+from kanban_tui.config import TaskAppendModes, VaultBackendSettings
 
 STATUS_COLUMNS: dict[str, int] = {
     "proposed": 1,
@@ -244,6 +251,61 @@ class VaultBackend(Backend):
 
     def get_tasks_by_ids(self, task_ids: list[int]) -> list[Task]:
         return [task for task in self._scanned_tasks() if task.task_id in task_ids]
+
+    def _refuse(self, rel_path: str, reason: str) -> dict[str, Any]:
+        return {"success": False, "message": f"{rel_path}: {reason}"}
+
+    def update_task_status(
+        self,
+        new_task: Task,
+        target_position: int | None = None,
+        append_mode: TaskAppendModes | None = None,
+    ) -> Task | dict[str, Any]:
+        rel_path = new_task.metadata["note_path"]
+        scanned_status = new_task.metadata["status"]
+        target_status = next(
+            status
+            for status, column in STATUS_COLUMNS.items()
+            if column == new_task.column
+        )
+        path = self._vault_root / rel_path
+        try:
+            current = read_task_note(path, self._vault_root)
+            raw = path.read_bytes().decode("utf-8")
+        except FileNotFoundError:
+            return self._refuse(rel_path, "note no longer exists, reload the board")
+        except (NoteReadError, OSError, UnicodeDecodeError) as error:
+            return self._refuse(rel_path, f"cannot read note ({error})")
+        if current is None:
+            return self._refuse(rel_path, "note is no longer a task note")
+        if current.status != scanned_status:
+            return self._refuse(
+                rel_path,
+                f"status changed on disk to {current.status!r}, reload the board",
+            )
+
+        finished = date.today() if target_status == "done" else None
+        try:
+            updated = with_status(raw, target_status, finished)
+            self._replace_file(path, updated)
+        except (ValueError, OSError) as error:
+            return self._refuse(rel_path, f"cannot write note ({error})")
+
+        new_task.metadata["status"] = target_status
+        self._scan()
+        return self.get_task_by_id(new_task.task_id) or new_task
+
+    @staticmethod
+    def _replace_file(path: Path, content: str) -> None:
+        handle, temp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+        try:
+            with os.fdopen(handle, "wb") as temp_file:
+                temp_file.write(content.encode("utf-8"))
+            os.chmod(temp_name, path.stat().st_mode)
+            os.replace(temp_name, path)
+        except BaseException:
+            Path(temp_name).unlink(missing_ok=True)
+            raise
 
     def get_warnings(self) -> list[str]:
         return list(self._warnings)

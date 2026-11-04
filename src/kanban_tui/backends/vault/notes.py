@@ -112,3 +112,62 @@ def read_task_note(path: Path, vault_root: Path) -> TaskNote | None:
         finished=dates["finished"],
         invalid_fields=invalid_fields,
     )
+
+
+STATUS_LINE = re.compile(r"^(status:[ \t]*)(\"[^\"\n]*\"|'[^'\n]*'|[^\s#]*)(.*)$")
+FINISHED_LINE = re.compile(r"^(finished:[ \t]*)(\"[^\"\n]*\"|'[^'\n]*'|[^\s#]*)(.*)$")
+
+
+def with_status(text: str, status: str, finished: date | None) -> str:
+    """Return text with the frontmatter `status` value replaced.
+
+    Quotes, trailing comments, line endings and every other byte are kept. When
+    `finished` is given, its line is replaced or added as the last frontmatter line.
+
+    Raises:
+        ValueError: the text has no frontmatter or no `status` line in it.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("note has no frontmatter")
+    closing = next(
+        (
+            index
+            for index, line in enumerate(lines[1:], start=1)
+            if line.strip() == "---"
+        ),
+        None,
+    )
+    if closing is None:
+        raise ValueError("note has no frontmatter")
+
+    status_index = finished_index = None
+    for index in range(1, closing):
+        content = lines[index].rstrip("\r\n")
+        if status_index is None and STATUS_LINE.match(content):
+            status_index = index
+        elif finished_index is None and FINISHED_LINE.match(content):
+            finished_index = index
+    if status_index is None:
+        raise ValueError("note has no status line")
+
+    def replace_value(index: int, pattern: re.Pattern[str], value: str) -> None:
+        line = lines[index]
+        content = line.rstrip("\r\n")
+        match = pattern.match(content)
+        assert match is not None
+        quote = match.group(2)[:1] if match.group(2)[:1] in "\"'" else ""
+        lines[index] = (
+            f"{match.group(1)}{quote}{value}{quote}{match.group(3)}"
+            f"{line[len(content) :]}"
+        )
+
+    replace_value(status_index, STATUS_LINE, status)
+    if finished is not None:
+        if finished_index is not None:
+            replace_value(finished_index, FINISHED_LINE, finished.isoformat())
+        else:
+            previous = lines[closing - 1]
+            ending = previous[len(previous.rstrip("\r\n")) :]
+            lines.insert(closing, f"finished: {finished.isoformat()}{ending}")
+    return "".join(lines)

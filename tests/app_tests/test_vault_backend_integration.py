@@ -54,3 +54,43 @@ async def test_switching_to_an_unloadable_vault_is_refused(
         assert test_app.config.backend.mode == Backends.SQLITE
         assert test_app.backend.__class__.__name__ == "SqliteBackend"
         assert any(n.severity == "warning" for n in test_app._notifications)
+
+
+async def focus_card(app: KanbanTui, pilot, title: str) -> TaskCard:
+    card = next(c for c in app.screen.query(TaskCard) if c.task_.title == title)
+    card.focus()
+    await pilot.pause()
+    return card
+
+
+def find_card(app: KanbanTui, title: str) -> TaskCard:
+    return next(c for c in app.screen.query(TaskCard) if c.task_.title == title)
+
+
+async def test_pressing_a_move_key_writes_the_note(
+    vault_app: KanbanTui, test_vault: Path
+):
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "two")
+
+        await pilot.press("L")
+        await pilot.pause()
+
+        assert find_card(vault_app, "two").task_.column == 3
+        text = (test_vault / "01-Projects/Alpha/tasks/two.md").read_text()
+        assert "\nstatus: active\n" in text
+
+
+async def test_a_refused_move_is_shown(vault_app: KanbanTui, test_vault: Path):
+    path = test_vault / "01-Projects/Alpha/tasks/two.md"
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "two")
+        path.write_text(path.read_text().replace("pending", "proposed"))
+
+        await pilot.press("L")
+        await pilot.pause()
+
+        assert any(n.title == "Status Update Failed" for n in vault_app._notifications)
+        assert find_card(vault_app, "two").task_.column == 2
