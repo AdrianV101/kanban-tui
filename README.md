@@ -195,7 +195,7 @@ frontmatter field decides the column:
 | `done`      | Done      |
 | `cancelled` | Archive (hidden) |
 
-A note with a missing or unknown status shows in Proposed. A note with no `status` field at all is not a task note and is skipped.
+A `type: task` note with a missing or unknown status shows in Proposed. Moving such a card is refused until the note has a `status` line. A note without `type: task` is not a task note and is skipped.
 Done cards stay visible for `done_visible_days` after their `finished` date.
 Cards are coloured by project: the folder name under `01-Projects/`, or the `project` field of the note.
 Notes in `00-Inbox` belong to the `personal_category`.
@@ -240,6 +240,13 @@ What the board can do:
 - Open the note in Obsidian with `e`, enter or a click on the card.
 
 Every refused write shows as an error. Notes that cannot be read are listed as warnings.
+
+The board does not watch the vault. `board.auto_refresh_interval` defaults to `0` (off), so edits made outside the board appear after pressing `r`. To reload on a timer, set an interval in seconds, for example `60`:
+
+```toml
+[board]
+auto_refresh_interval = 60
+```
 
 Not supported: multiple boards, creating or renaming columns, creating or editing categories,
 task dependencies, reordering cards inside a column, and the CLI and MCP server.
