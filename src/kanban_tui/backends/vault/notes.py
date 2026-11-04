@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -172,3 +173,77 @@ def with_status(text: str, status: str, finished: date | None) -> str:
             ending = previous[len(previous.rstrip("\r\n")) :]
             lines.insert(closing, f"finished: {finished.isoformat()}{ending}")
     return "".join(lines)
+
+
+def note_filename(title: str) -> str:
+    """Kebab-case file name for a title; `task.md` when nothing usable is left."""
+    slug = re.sub(r"[\W_]+", "-", title.lower()).strip("-")[:100].strip("-")
+    return f"{slug or 'task'}.md"
+
+
+TEMPLATE_DATE = re.compile(r"<%\s*tp\.date\.now\(\s*[\"']YYYY-MM-DD[\"']\s*\)\s*%>")
+TEMPLATE_TITLE = re.compile(r"<%\s*tp\.file\.title\s*%>")
+SAFE_YAML_SCALAR = re.compile(r"^[\w][\w .\-/]*$")
+
+
+def render_new_task(
+    template_text: str,
+    title: str,
+    status: str,
+    project: str | None,
+    due: date | None,
+    description: str,
+    today: date,
+) -> str:
+    """Fill the vault's task template for a new note.
+
+    Template placeholders are substituted; `status` is always set, `project` and
+    `due` only when given. A non-empty `description` goes under `## Description`.
+
+    Raises:
+        ValueError: the template has no frontmatter.
+    """
+    text = TEMPLATE_DATE.sub(today.isoformat(), template_text)
+    text = TEMPLATE_TITLE.sub(lambda _: title, text)
+
+    lines = text.splitlines(keepends=True)
+    closing = next(
+        (i for i, line in enumerate(lines[1:], start=1) if line.strip() == "---"),
+        None,
+    )
+    if not lines or lines[0].strip() != "---" or closing is None:
+        raise ValueError("template has no frontmatter")
+
+    fields: dict[str, str] = {"status": status}
+    if project is not None:
+        fields["project"] = (
+            project if SAFE_YAML_SCALAR.match(project) else json.dumps(project)
+        )
+    if due is not None:
+        fields["due"] = due.isoformat()
+    for key, value in fields.items():
+        pattern = re.compile(rf"^{key}:")
+        index = next(
+            (i for i in range(1, closing) if pattern.match(lines[i])),
+            None,
+        )
+        if index is None:
+            lines.insert(closing, f"{key}: {value}\n")
+            closing += 1
+            continue
+        ending = lines[index][len(lines[index].rstrip("\r\n")) :]
+        lines[index] = f"{key}: {value}{ending}"
+    text = "".join(lines)
+
+    if description.strip():
+        section = f"## Description\n\n{description.strip()}\n\n"
+        text, count = re.subn(
+            r"^## Description[ \t]*\n.*?(?=^## |\Z)",
+            lambda _: section,
+            text,
+            count=1,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        if count == 0:
+            text = f"{text.rstrip()}\n\n{section.rstrip()}\n"
+    return text

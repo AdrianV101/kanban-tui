@@ -11,7 +11,9 @@ from kanban_tui.backends.base import Backend
 from kanban_tui.backends.vault.notes import (
     NoteReadError,
     TaskNote,
+    note_filename,
     read_task_note,
+    render_new_task,
     with_status,
 )
 from kanban_tui.classes.board import Board
@@ -51,6 +53,12 @@ CATEGORY_PALETTE = [
 ]
 BOARD_ID = 1
 BOARD_NAME = "Vault"
+TEMPLATE_PATH = "05-Templates/task.md"
+INBOX_FOLDER = "00-Inbox"
+
+
+class VaultWriteError(Exception):
+    """A board write was refused; the message says why."""
 
 
 @dataclass
@@ -251,6 +259,95 @@ class VaultBackend(Backend):
 
     def get_tasks_by_ids(self, task_ids: list[int]) -> list[Task]:
         return [task for task in self._scanned_tasks() if task.task_id in task_ids]
+
+    def create_new_task(
+        self,
+        title: str,
+        description: str,
+        column: int,
+        category: int | None = None,
+        due_date: datetime | str | None = None,
+    ) -> Task:
+        status = next(
+            (name for name, number in STATUS_COLUMNS.items() if number == column),
+            None,
+        )
+        if status is None:
+            raise VaultWriteError(f"unknown column {column}")
+        due = self._read_due_date(due_date)
+        project, folder = self._resolve_destination(category)
+
+        try:
+            template = (self._vault_root / TEMPLATE_PATH).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            raise VaultWriteError(
+                f"cannot read template {TEMPLATE_PATH} ({error})"
+            ) from error
+        try:
+            content = render_new_task(
+                template, title, status, project, due, description, date.today()
+            )
+        except ValueError as error:
+            raise VaultWriteError(f"{TEMPLATE_PATH}: {error}") from error
+
+        rel_path = self._write_new_note(folder, note_filename(title), content)
+        self._scan()
+        task = self.get_task_by_id(self._get_task_id(rel_path))
+        if task is None:
+            raise VaultWriteError(f"{rel_path}: written but not shown on the board")
+        return task
+
+    @staticmethod
+    def _read_due_date(due_date: datetime | str | None) -> date | None:
+        if due_date is None or due_date == "":
+            return None
+        if isinstance(due_date, datetime):
+            return due_date.date()
+        try:
+            return datetime.fromisoformat(due_date).date()
+        except ValueError as error:
+            raise VaultWriteError(f"cannot read due date {due_date!r}") from error
+
+    def _resolve_destination(self, category: int | None) -> tuple[str | None, str]:
+        personal = self.settings.personal_category
+        if category is None:
+            return None, INBOX_FOLDER
+        self._scanned_tasks()
+        name = next(
+            (name for name, number in self._category_ids.items() if number == category),
+            None,
+        )
+        if name is None:
+            raise VaultWriteError(f"unknown category {category}")
+        if name == personal:
+            return None, INBOX_FOLDER
+        folder = self._category_folders.get(name)
+        if folder is None:
+            raise VaultWriteError(f"no known tasks folder for project {name!r}")
+        return name, folder
+
+    def _write_new_note(self, folder: str, filename: str, content: str) -> str:
+        directory = self._vault_root / folder
+        stem = Path(filename).stem
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            for attempt in range(1, 1000):
+                name = filename if attempt == 1 else f"{stem}-{attempt}.md"
+                path = directory / name
+                try:
+                    with open(path, "x", encoding="utf-8", newline="") as handle:
+                        try:
+                            handle.write(content)
+                        except BaseException:
+                            handle.close()
+                            path.unlink(missing_ok=True)
+                            raise
+                except FileExistsError:
+                    continue
+                return path.relative_to(self._vault_root).as_posix()
+        except OSError as error:
+            raise VaultWriteError(f"cannot write note in {folder} ({error})") from error
+        raise VaultWriteError(f"no free file name for {filename} in {folder}")
 
     def _refuse(self, rel_path: str, reason: str) -> dict[str, Any]:
         return {"success": False, "message": f"{rel_path}: {reason}"}
