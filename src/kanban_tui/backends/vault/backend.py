@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from kanban_tui.backends.base import Backend
 from kanban_tui.backends.vault.notes import (
@@ -391,6 +392,22 @@ class VaultBackend(Backend):
         new_task.metadata["status"] = target_status
         self._scan()
         return self.get_task_by_id(new_task.task_id) or new_task
+
+    def delete_task(self, task_id: int) -> None:
+        task = self.get_task_by_id(task_id)
+        if task is None:
+            raise VaultWriteError("note is not on the board, reload the board")
+        archived = task.model_copy(
+            update={"column": ARCHIVE_COLUMN, "metadata": dict(task.metadata)}
+        )
+        result = self.update_task_status(archived)
+        if isinstance(result, dict):
+            raise VaultWriteError(result["message"])
+
+    def note_url(self, task: Task) -> str:
+        rel_path = Path(task.metadata["note_path"]).with_suffix("").as_posix()
+        vault = quote(self._vault_root.name, safe="")
+        return f"obsidian://open?vault={vault}&file={quote(rel_path, safe='')}"
 
     @staticmethod
     def _replace_file(path: Path, content: str) -> None:

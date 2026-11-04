@@ -4,10 +4,11 @@ from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
 import pytest
-from textual.widgets import Input, Select
+from textual.widgets import Button, Input, Label, Select
 
 from kanban_tui.app import KanbanTui
 from kanban_tui.config import Backends
+from kanban_tui.modal.modal_confirm_screen import ModalConfirmScreen
 from kanban_tui.modal.modal_task_screen import ModalTaskEditScreen
 from kanban_tui.widgets.task_card import TaskCard
 from tests.conftest import write_task_note
@@ -148,3 +149,64 @@ async def test_a_refused_creation_keeps_the_typed_input(
         assert isinstance(vault_app.screen, ModalTaskEditScreen)
         assert vault_app.screen.query_one("#input_title", Input).value == "Kept title"
         assert not list(test_vault.rglob("kept-title*.md"))
+
+
+async def test_archiving_from_the_board_keeps_the_note(
+    vault_app: KanbanTui, test_vault: Path
+):
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "two")
+
+        await pilot.press("d")
+        await pilot.pause()
+        confirm = vault_app.screen
+        assert isinstance(confirm, ModalConfirmScreen)
+        assert "Archive task" in str(confirm.query_one("#btn_continue", Button).label)
+        assert "The note is kept." in str(confirm.query_one(Label).render())
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert not any(c.task_.title == "two" for c in vault_app.screen.query(TaskCard))
+        text = (test_vault / "01-Projects/Alpha/tasks/two.md").read_text()
+        assert "\nstatus: cancelled\n" in text
+
+
+async def test_a_refused_archive_is_shown(vault_app: KanbanTui, test_vault: Path):
+    path = test_vault / "01-Projects/Alpha/tasks/two.md"
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "two")
+        path.write_text(path.read_text().replace("pending", "proposed"))
+        changed = path.read_text()
+
+        await pilot.press("d")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert any(n.severity == "error" for n in vault_app._notifications)
+        assert find_card(vault_app, "two").task_.column == 2
+        assert path.read_text() == changed
+
+
+@pytest.mark.parametrize("trigger", ["e", "enter", "click"])
+async def test_edit_opens_the_note_in_obsidian(
+    vault_app: KanbanTui, monkeypatch, trigger: str
+):
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", lambda url, *a, **k: opened.append(url))
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        card = await focus_card(vault_app, pilot, "two")
+
+        if trigger == "click":
+            await pilot.click(f"#{card.id}")
+        else:
+            await pilot.press(trigger)
+        await pilot.pause()
+
+        assert opened == [
+            "obsidian://open?vault=vault&file=01-Projects%2FAlpha%2Ftasks%2Ftwo"
+        ]
+        assert not isinstance(vault_app.screen, ModalTaskEditScreen)

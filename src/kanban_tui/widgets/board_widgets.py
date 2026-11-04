@@ -566,10 +566,22 @@ class KanbanBoard(HorizontalScroll):
 
     @on(TaskCard.Delete)
     async def delete_task(self, event: TaskCard.Delete):
+        task_id = event.taskcard.task_.task_id
+        if self.app.config.backend.mode == Backends.VAULT:
+            from kanban_tui.backends.vault.backend import VaultWriteError
+
+            try:
+                self.app.backend.delete_task(task_id=task_id)
+            except VaultWriteError as error:
+                self.app.notify(
+                    str(error), title="Archive Task Failed", severity="error"
+                )
+                return
         await self.query_one(
             f"#column_{event.taskcard.task_.column}", Column
         ).remove_task(task=event.taskcard.task_)
-        self.app.backend.delete_task(task_id=event.taskcard.task_.task_id)
+        if self.app.config.backend.mode != Backends.VAULT:
+            self.app.backend.delete_task(task_id=task_id)
         self.app.update_task_list()
 
         if not self.app.task_list:
