@@ -147,9 +147,13 @@ def _sweep(
             if isinstance(note, str):
                 failed_meetings.add(key)
                 failed_sources.add(key.split(":", 1)[0])
-                problem(_source_title(key.split(":", 1)[0]), f"{draft.title}: {note}")
+                problem(
+                    _source_title(key.split(":", 1)[0]),
+                    f'could not write "{draft.title}" for {key}: {note}',
+                )
                 continue
             report.created.append(note.metadata["note_path"])
+            state.meetings[key] = iso_today
             save_state(state_path, state)
 
     for item in items:

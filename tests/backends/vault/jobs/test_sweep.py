@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from kanban_tui.backends.vault.backend import VaultBackend
-from kanban_tui.backends.vault.jobs.capture import CAPTURE_PATH
+from kanban_tui.backends.vault.backend import VaultBackend, VaultWriteError
+from kanban_tui.backends.vault.jobs import sweep as sweep_module
+from kanban_tui.backends.vault.jobs.capture import CAPTURE_PATH, CaptureWriteError
 from kanban_tui.backends.vault.jobs.sweep import run_sweep
 from kanban_tui.backends.vault.jobs.sweep_agent import (
     AgentError,
@@ -218,6 +219,17 @@ def test_invalid_output_is_dropped_and_unwritten_capture_stays(
     assert load_state(state_path).meetings == {"granola:m1": ISO}
 
 
+def test_draft_for_already_recorded_meeting_is_dropped(
+    backend: VaultBackend, state_path: Path
+):
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(json.dumps({"meetings": {"granola:old": "2026-11-03"}}))
+    outcome = result([draft("granola:old", "Already handled")], granola=["old"])
+    report = sweep(backend, state_path, FakeAgent(outcome))
+    assert report.created == []
+    assert load_state(state_path).meetings == {"granola:old": "2026-11-03"}
+
+
 def test_second_draft_for_same_capture_is_ignored(
     vault: Path, backend: VaultBackend, state_path: Path
 ):
@@ -227,24 +239,126 @@ def test_second_draft_for_same_capture_is_ignored(
     assert report.ok and titles(backend).count("Second") == 0
 
 
-def test_write_failure_keeps_line_and_leaves_meeting_unmarked(
-    vault: Path, backend: VaultBackend, state_path: Path
+@pytest.fixture
+def read_only_alpha(vault: Path):
+    folder = vault / "01-Projects/Alpha/tasks"
+    folder.chmod(0o555)
+    yield
+    folder.chmod(0o755)
+
+
+def test_write_failure_keeps_line_leaves_meeting_unmarked_and_files_card(
+    vault: Path, backend: VaultBackend, state_path: Path, read_only_alpha
 ):
-    (vault / "05-Templates/task.md").unlink()
-    capture = write_capture(vault, "- buy stamps\n")
+    capture = write_capture(vault, "- fix the bug\n")
     outcome = result(
-        [draft("capture:c1", "Buy stamps"), draft("granola:m1", "Send quote")],
+        [
+            draft("capture:c1", "Fix the bug", "Alpha"),
+            draft("granola:m1", "Send quote", "Alpha"),
+        ],
         granola=["m1"],
     )
     report = sweep(backend, state_path, FakeAgent(outcome))
 
     assert not report.ok
-    assert capture.read_text() == "- buy stamps\n"
-    assert "buy stamps" in report.errors[CAPTURE_CARD]
-    assert GRANOLA_CARD in report.errors
+    assert capture.read_text() == "- fix the bug\n"
+    assert "fix the bug" in report.errors[CAPTURE_CARD]
+    assert "Send quote" in report.errors[GRANOLA_CARD]
+    assert (vault / "00-Inbox/capture-sweep-capture-md-failed.md").exists()
+    assert (vault / "00-Inbox/capture-sweep-granola-failed.md").exists()
     state = load_state(state_path)
     assert state.meetings == {}
+    assert state.captures_written == {}
     assert state.last_success == {"plaud": ISO}
+
+
+def test_card_creation_failure_is_reported_not_raised(
+    vault: Path, backend: VaultBackend, state_path: Path
+):
+    (vault / "05-Templates/task.md").unlink()
+    write_capture(vault, "- buy stamps\n")
+    report = sweep(
+        backend, state_path, FakeAgent(result([draft("capture:c1", "Buy stamps")]))
+    )
+    assert "buy stamps" in report.errors[CAPTURE_CARD]
+    assert load_state(state_path).failure_cards == {}
+
+
+@pytest.mark.parametrize(
+    ("stage", "kept"), [("before agent", "2026-11-03"), ("after writes", ISO)]
+)
+def test_capture_removal_failure_keeps_entries_and_retries(
+    vault: Path,
+    backend: VaultBackend,
+    state_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    kept: str,
+):
+    capture = write_capture(vault, "- buy stamps\n")
+    if stage == "before agent":
+        state_path.parent.mkdir(parents=True)
+        state_path.write_text(
+            json.dumps({"captures_written": {"- buy stamps": "2026-11-03"}})
+        )
+    failing = CaptureWriteError("Capture.md changed on every attempt")
+
+    def refuse(vault_path, lines):
+        raise failing
+
+    monkeypatch.setattr(sweep_module, "remove_capture_lines", refuse)
+    agent = FakeAgent(result([draft("capture:c1", "Buy stamps")]))
+    report = sweep(backend, state_path, agent)
+
+    assert "changed on every attempt" in report.errors[CAPTURE_CARD]
+    assert titles(backend).count(CAPTURE_CARD) == 1
+    assert capture.read_text() == "- buy stamps\n"
+    assert load_state(state_path).captures_written == {"- buy stamps": kept}
+
+    monkeypatch.undo()
+    second = FakeAgent(result())
+    sweep(backend, state_path, second)
+    assert second.requests[0].captures == []
+    assert capture.read_text() == ""
+    assert load_state(state_path).captures_written == {}
+
+
+def test_several_errors_for_one_title_share_one_card(
+    vault: Path, backend: VaultBackend, state_path: Path
+):
+    write_capture(vault, "- one\n- two\n")
+    report = sweep(backend, state_path, FakeAgent(result()))
+    assert report.errors[CAPTURE_CARD] == (
+        'no draft was written for "one"; no draft was written for "two"'
+    )
+    assert titles(backend).count(CAPTURE_CARD) == 1
+
+
+def test_partial_meeting_failure_stays_marked_and_rerun_does_not_duplicate(
+    vault: Path, backend: VaultBackend, state_path: Path, monkeypatch
+):
+    drafts = [
+        draft("granola:m1", "First action"),
+        draft("granola:m1", "Second action"),
+    ]
+    real = backend.create_new_task
+
+    def fail_second(title, *args, **kwargs):
+        if title == "Second action":
+            raise VaultWriteError("disk full")
+        return real(title, *args, **kwargs)
+
+    monkeypatch.setattr(backend, "create_new_task", fail_second)
+    report = sweep(backend, state_path, FakeAgent(result(drafts, granola=["m1"])))
+    monkeypatch.undo()
+
+    assert "Second action" in report.errors[GRANOLA_CARD]
+    assert "granola:m1" in report.errors[GRANOLA_CARD]
+    assert load_state(state_path).meetings == {"granola:m1": ISO}
+
+    rerun = sweep(backend, state_path, FakeAgent(result(drafts, granola=["m1"])))
+    assert rerun.created == []
+    assert titles(backend).count("First action") == 1
 
 
 def test_unreadable_state_makes_one_card_and_changes_nothing(
