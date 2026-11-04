@@ -24,6 +24,7 @@ class TaskNote:
     board: str | None
     project: str | None
     priority: str | None
+    prs: list[str]
     due: date | None
     created: date | None
     finished: date | None
@@ -49,6 +50,17 @@ def parse_date(value: Any) -> date | None:
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value).strip())
+
+
+def read_prs(value: Any) -> list[str] | None:
+    """The PR URLs in a `prs` value, or None when the value is not a string or list of strings."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return list(value)
+    return None
 
 
 def read_title(body: str, fallback: str) -> str:
@@ -112,6 +124,10 @@ def parse_task_note(text: str, rel_path: str, fallback_title: str) -> TaskNote |
     raw_board = frontmatter.get("board")
     raw_project = frontmatter.get("project")
     raw_priority = frontmatter.get("priority")
+    prs = read_prs(frontmatter.get("prs"))
+    if prs is None:
+        prs = []
+        invalid_fields.append("prs")
     return TaskNote(
         rel_path=rel_path,
         text=text,
@@ -122,6 +138,7 @@ def parse_task_note(text: str, rel_path: str, fallback_title: str) -> TaskNote |
         board=None if raw_board is None else str(raw_board),
         project=None if raw_project is None else str(raw_project),
         priority=None if raw_priority is None else str(raw_priority).lower(),
+        prs=prs,
         due=dates["due"],
         created=dates["created"],
         finished=dates["finished"],
@@ -207,6 +224,18 @@ def with_card_fields(
     return "".join(lines)
 
 
+def with_appended_line(text: str, line: str) -> str:
+    """Return text with `line` as its last line.
+
+    A line break is added first when the text does not end with one. The note's own
+    line ending is used, and every existing byte is kept.
+    """
+    ending = "\r\n" if "\r\n" in text else "\n"
+    if text and not text.endswith(("\n", "\r")):
+        text += ending
+    return f"{text}{line}{ending}"
+
+
 def note_filename(title: str) -> str:
     """Kebab-case file name for a title; `task.md` when nothing usable is left."""
     slug = re.sub(r"[\W_]+", "-", title.lower()).strip("-")[:100].strip("-")
@@ -227,11 +256,12 @@ def render_new_task(
     due: date | None,
     description: str,
     today: date,
+    source: str | None = None,
 ) -> str:
     """Fill the vault's task template for a new note.
 
-    Template placeholders are substituted; `status` is always set, `board`, `project`
-    and `due` only when given. A non-empty `description` goes under `## Description`.
+    Template placeholders are substituted; `status` is always set, `board`, `project`,
+    `due` and `source` only when given. A non-empty `description` goes under `## Description`.
 
     Raises:
         ValueError: the template has no frontmatter.
@@ -253,6 +283,10 @@ def render_new_task(
     if project is not None:
         fields["project"] = (
             project if SAFE_YAML_SCALAR.match(project) else json.dumps(project)
+        )
+    if source is not None:
+        fields["source"] = (
+            source if SAFE_YAML_SCALAR.match(source) else json.dumps(source)
         )
     if due is not None:
         fields["due"] = due.isoformat()

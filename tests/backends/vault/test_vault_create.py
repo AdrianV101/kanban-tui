@@ -156,3 +156,60 @@ def test_creation_is_refused_when_it_cannot_be_done_correctly(
         )
 
     assert list_files(test_vault) == before
+
+
+@freeze_time(FROZEN_DAY)
+@pytest.mark.parametrize(
+    "source,line",
+    [
+        (None, "source: null\n"),
+        ("granola", "source: granola\n"),
+        (
+            "https://notes.example.com/d/abc",
+            'source: "https://notes.example.com/d/abc"\n',
+        ),
+    ],
+)
+def test_a_new_card_can_record_its_source(
+    test_vault: Path, source: str | None, line: str
+):
+    backend = seed_vault(test_vault)
+
+    backend.create_new_task("From elsewhere", "", column=1, source=source)
+
+    path = test_vault / "00-Inbox/from-elsewhere.md"
+    note = read_task_note(path, test_vault)
+    assert note is not None
+    assert note.frontmatter["source"] == source
+    assert line in path.read_text()
+    if source is None:
+        template = (test_vault / "05-Templates/task.md").read_text()
+        assert "source: null\n" in template
+        assert path.read_text().count("source:") == 1
+
+
+@freeze_time(FROZEN_DAY)
+def test_writable_projects_lists_each_tasks_folder_and_personal(test_vault: Path):
+    backend = seed_vault(test_vault)
+
+    projects = backend.writable_projects()
+
+    assert set(projects) == {"Work", "Side Project", "Personal"}
+    assert projects["Personal"] is None
+    for name, folder in (("Work", WORK_TASKS), ("Side Project", SIDE_PROJECT_TASKS)):
+        backend.create_new_task(f"In {name}", "", column=1, category=projects[name])
+        assert (test_vault / folder / f"in-{note_filename(name)}").is_file()
+    backend.create_new_task("In personal", "", column=1, category=projects["Personal"])
+    assert (test_vault / "00-Inbox/in-personal.md").is_file()
+
+
+def test_writable_projects_without_personal_notes_still_lists_personal(
+    test_vault: Path,
+):
+    write_task_note(test_vault, f"{WORK_TASKS}/seed.md", {"project": "Work"})
+    backend = make_backend(test_vault)
+
+    assert backend.writable_projects() == {
+        "Work": category_id(backend, "Work"),
+        "Personal": None,
+    }

@@ -6,6 +6,7 @@ import pytest
 from freezegun import freeze_time
 
 from kanban_tui.backends.vault.backend import COLUMN_NAMES, VaultBackend
+from kanban_tui.backends.vault.notes import read_task_note
 from kanban_tui.config import VaultBackendSettings
 from tests.conftest import write_task_note
 
@@ -334,3 +335,46 @@ def test_lookups_use_the_last_scan_and_ids_are_stable(test_vault: Path):
     assert second["Changed"].task_id == first["a"].task_id
     assert second["c"].task_id not in {first["a"].task_id, first["b"].task_id}
     assert backend.get_task_by_id(9999) is None
+
+
+def write_raw_note(vault: Path, rel_path: str, frontmatter_lines: str) -> None:
+    path = vault / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\ntype: task\nstatus: active\n{frontmatter_lines}---\n", encoding="utf-8"
+    )
+
+
+PR_ONE = "https://github.com/acme/app/pull/1"
+PR_TWO = "https://github.com/acme/app/pull/2"
+
+
+@pytest.mark.parametrize(
+    "frontmatter,expected,invalid",
+    [
+        (f"prs:\n  - {PR_ONE}\n  - {PR_TWO}\n", [PR_ONE, PR_TWO], False),
+        (f"prs: {PR_ONE}\n", [PR_ONE], False),
+        ("", [], False),
+        ("prs: null\n", [], False),
+        ("prs:\n", [], False),
+        ("prs: []\n", [], False),
+        (f"prs:\n  - {PR_ONE}\n  - 7\n", [], True),
+        ("prs:\n  - url: x\n", [], True),
+        ("prs:\n  url: x\n", [], True),
+        ("prs: 12\n", [], True),
+    ],
+)
+def test_prs_are_read_as_a_list_of_urls(
+    test_vault: Path, frontmatter: str, expected: list[str], invalid: bool
+):
+    write_raw_note(test_vault, "00-Inbox/pr.md", frontmatter)
+    backend = make_backend(test_vault)
+
+    (task,) = backend.get_tasks_on_active_board()
+
+    assert task.metadata["prs"] == expected
+    note = read_task_note(test_vault / "00-Inbox/pr.md", test_vault)
+    assert note is not None
+    assert note.prs == expected
+    assert ("prs" in note.invalid_fields) is invalid
+    assert any("'prs'" in warning for warning in backend.get_warnings()) is invalid

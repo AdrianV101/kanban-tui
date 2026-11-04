@@ -369,3 +369,77 @@ def test_a_symlinked_note_refuses_the_move_and_stays_a_link(test_vault: Path):
     assert NOTE in result["message"]
     assert link.is_symlink()
     assert "status: pending" in target.read_text()
+
+
+LINE = "- 2026-11-04 PR closed without merge"
+
+
+def move_with_line(backend: VaultBackend, column: int, line: str = LINE):
+    (task,) = backend.get_tasks_on_active_board()
+    return backend.move_with_note(task, column, line)
+
+
+@freeze_time(FROZEN_DAY)
+@pytest.mark.parametrize(
+    "original,expected",
+    [
+        (
+            "---\ntype: task\nstatus: active\nboard: in-review\n---\nbody\n",
+            f"---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n{LINE}\n",
+        ),
+        (
+            "---\ntype: task\nstatus: active\nboard: in-review\n---\nbody",
+            f"---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n{LINE}\n",
+        ),
+        (
+            "---\r\ntype: task\r\nstatus: active\r\nboard: in-review\r\n---\r\nbody\r\n",
+            f"---\r\ntype: task\r\nstatus: active\r\nboard: doing\r\n---\r\nbody\r\n{LINE}\r\n",
+        ),
+        (
+            "---\r\ntype: task\r\nstatus: active\r\nboard: in-review\r\n---\r\nbody",
+            f"---\r\ntype: task\r\nstatus: active\r\nboard: doing\r\n---\r\nbody\r\n{LINE}\r\n",
+        ),
+    ],
+)
+def test_a_move_with_a_note_line_writes_fields_and_the_last_line(
+    test_vault: Path, original: str, expected: str
+):
+    path = write_raw(test_vault, original)
+    backend = make_backend(test_vault)
+
+    result = move_with_line(backend, 3)
+
+    assert path.read_bytes() == expected.encode()
+    assert not isinstance(result, dict)
+    assert result.column == 3
+    (task,) = backend.get_tasks_on_active_board()
+    assert task.column == 3
+
+
+@freeze_time(FROZEN_DAY)
+def test_a_move_with_a_note_line_to_done_stamps_finished(test_vault: Path):
+    path = write_raw(test_vault, "---\ntype: task\nstatus: active\n---\nbody\n")
+
+    move_with_line(make_backend(test_vault), 5)
+
+    assert path.read_text() == (
+        f"---\ntype: task\nstatus: done\nfinished: {FROZEN_DAY}\n---\nbody\n{LINE}\n"
+    )
+
+
+def test_a_move_with_a_note_line_is_refused_when_the_column_changed_on_disk(
+    test_vault: Path,
+):
+    path = write_raw(
+        test_vault, "---\ntype: task\nstatus: active\nboard: in-review\n---\nbody\n"
+    )
+    backend = make_backend(test_vault)
+    (task,) = backend.get_tasks_on_active_board()
+    changed = "---\ntype: task\nstatus: pending\nboard: ready\n---\nbody\n"
+    path.write_bytes(changed.encode())
+
+    result = backend.move_with_note(task, 3, LINE)
+
+    assert isinstance(result, dict)
+    assert result["success"] is False
+    assert path.read_bytes() == changed.encode()

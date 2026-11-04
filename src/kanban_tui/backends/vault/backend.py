@@ -16,6 +16,7 @@ from kanban_tui.backends.vault.notes import (
     parse_task_note,
     read_task_note,
     render_new_task,
+    with_appended_line,
     with_card_fields,
 )
 from kanban_tui.classes.board import Board
@@ -203,7 +204,8 @@ class VaultBackend(Backend):
         self, note: TaskNote, modified: datetime, warnings: list[str]
     ) -> Task | None:
         for field_name in note.invalid_fields:
-            warnings.append(f"{note.rel_path}: cannot read date in '{field_name}'")
+            what = "list of PR links" if field_name == "prs" else "date"
+            warnings.append(f"{note.rel_path}: cannot read {what} in '{field_name}'")
 
         status = note.status
         column = column_for(status, note.board)
@@ -212,6 +214,7 @@ class VaultBackend(Backend):
             "status": status,
             "board": note.board,
             "column": column,
+            "prs": note.prs,
         }
         if status not in KNOWN_STATUSES:
             metadata["unknown_status"] = status
@@ -312,6 +315,8 @@ class VaultBackend(Backend):
         column: int,
         category: int | None = None,
         due_date: datetime | str | None = None,
+        *,
+        source: str | None = None,
     ) -> Task:
         if column not in COLUMN_FIELDS:
             raise VaultWriteError(f"unknown column {column}")
@@ -327,7 +332,15 @@ class VaultBackend(Backend):
             ) from error
         try:
             content = render_new_task(
-                template, title, status, board, project, due, description, date.today()
+                template,
+                title,
+                status,
+                board,
+                project,
+                due,
+                description,
+                date.today(),
+                source,
             )
         except ValueError as error:
             raise VaultWriteError(f"{TEMPLATE_PATH}: {error}") from error
@@ -400,9 +413,40 @@ class VaultBackend(Backend):
         target_position: int | None = None,
         append_mode: TaskAppendModes | None = None,
     ) -> Task | dict[str, Any]:
+        return self._move(new_task, new_task.column, None)
+
+    def move_with_note(
+        self, task: Task, column: int, line: str
+    ) -> Task | dict[str, Any]:
+        """Move a card to `column` and append `line` to its note in one write.
+
+        Refuses, and leaves the note untouched, in the same cases as
+        `update_task_status`.
+        """
+        return self._move(task, column, line)
+
+    def writable_projects(self) -> dict[str, int | None]:
+        """Project name to the category id `create_new_task` accepts for it.
+
+        Lists each project with a known tasks folder, plus the Personal category,
+        which maps to None.
+        """
+        self._scanned_tasks()
+        projects: dict[str, int | None] = {
+            name: number
+            for name, number in self._category_ids.items()
+            if name != self.settings.personal_category
+            and name in self._category_folders
+        }
+        projects[self.settings.personal_category] = None
+        return projects
+
+    def _move(
+        self, new_task: Task, column: int, line: str | None
+    ) -> Task | dict[str, Any]:
         rel_path = new_task.metadata["note_path"]
         scanned_column = new_task.metadata["column"]
-        target_status, target_board = fields_for_column(new_task.column)
+        target_status, target_board = fields_for_column(column)
         path = self._vault_root / rel_path
         if path.is_symlink():
             return self._refuse(rel_path, "note is a symlink, move it in Obsidian")
@@ -426,6 +470,8 @@ class VaultBackend(Backend):
         finished = date.today() if target_status == "done" else None
         try:
             updated = with_card_fields(raw, target_status, target_board, finished)
+            if line is not None:
+                updated = with_appended_line(updated, line)
             self._replace_file(path, updated, read_stat)
         except VaultWriteError as error:
             return self._refuse(rel_path, str(error))
@@ -435,8 +481,9 @@ class VaultBackend(Backend):
         new_task.metadata.update(
             status=target_status,
             board=target_board if target_board is not None else current.board,
-            column=new_task.column,
+            column=column,
         )
+        new_task.column = column
         self._scan()
         return self.get_task_by_id(new_task.task_id) or new_task
 
