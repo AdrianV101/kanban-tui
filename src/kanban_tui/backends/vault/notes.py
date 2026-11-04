@@ -21,6 +21,7 @@ class TaskNote:
     title: str
     description: str
     status: str | None
+    board: str | None
     project: str | None
     priority: str | None
     due: date | None
@@ -108,6 +109,7 @@ def parse_task_note(text: str, rel_path: str, fallback_title: str) -> TaskNote |
             invalid_fields.append(name)
 
     raw_status = frontmatter.get("status")
+    raw_board = frontmatter.get("board")
     raw_project = frontmatter.get("project")
     raw_priority = frontmatter.get("priority")
     return TaskNote(
@@ -117,6 +119,7 @@ def parse_task_note(text: str, rel_path: str, fallback_title: str) -> TaskNote |
         title=read_title(body, fallback_title),
         description=read_description(body),
         status=None if raw_status is None else str(raw_status),
+        board=None if raw_board is None else str(raw_board),
         project=None if raw_project is None else str(raw_project),
         priority=None if raw_priority is None else str(raw_priority).lower(),
         due=dates["due"],

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from freezegun import freeze_time
 
-from kanban_tui.backends.vault.backend import COLUMN_NAMES, STATUS_COLUMNS, VaultBackend
+from kanban_tui.backends.vault.backend import COLUMN_NAMES, VaultBackend
 from kanban_tui.config import VaultBackendSettings
 from tests.conftest import write_task_note
 
@@ -59,36 +59,43 @@ def test_a_vault_that_cannot_give_notes_is_named_in_a_warning(
 
 
 @pytest.mark.parametrize(
-    "status,column",
+    "status,board,column",
     [
-        ("proposed", 1),
-        ("pending", 2),
-        ("active", 3),
-        ("in-review", 4),
-        ("done", 5),
-        ("cancelled", 6),
+        ("pending", None, 1),
+        ("pending", "proposed", 1),
+        ("pending", "ready", 2),
+        ("pending", "in-review", 1),
+        ("pending", "junk", 1),
+        ("active", None, 3),
+        ("active", "doing", 3),
+        ("active", "ready", 3),
+        ("active", "in-review", 4),
+        ("done", "ready", 5),
+        ("done", None, 5),
+        ("cancelled", "in-review", 6),
     ],
 )
-def test_status_maps_to_its_column(test_vault: Path, status: str, column: int):
+def test_status_and_board_map_to_a_column(
+    test_vault: Path, status: str, board: str | None, column: int
+):
     write_task_note(
         test_vault,
         "00-Inbox/note.md",
-        {"status": status, "finished": date.today().isoformat()},
+        {"status": status, "board": board, "finished": date.today().isoformat()},
     )
 
     (task,) = make_backend(test_vault).get_tasks_on_active_board()
 
     assert task.column == column
-    assert STATUS_COLUMNS[status] == column
-    assert task.metadata["status"] == status
     assert "unknown_status" not in task.metadata
 
 
+@pytest.mark.parametrize("board", [None, "ready"])
 @pytest.mark.parametrize("status", [None, "approved", "superseded"])
 def test_missing_or_unknown_status_shows_in_proposed(
-    test_vault: Path, status: str | None
+    test_vault: Path, status: str | None, board: str | None
 ):
-    write_task_note(test_vault, "00-Inbox/note.md", {"status": status})
+    write_task_note(test_vault, "00-Inbox/note.md", {"status": status, "board": board})
 
     (task,) = make_backend(test_vault).get_tasks_on_active_board()
 
@@ -97,6 +104,21 @@ def test_missing_or_unknown_status_shows_in_proposed(
         assert task.metadata["unknown_status"] is None
     else:
         assert task.metadata["unknown_status"] == status
+
+
+def test_scanned_status_board_and_column_are_recorded(test_vault: Path):
+    write_task_note(
+        test_vault, "00-Inbox/a.md", {"status": "active", "board": "in-review"}
+    )
+    write_task_note(test_vault, "00-Inbox/b.md", {"status": "pending"})
+
+    by_title = {
+        t.title: t for t in make_backend(test_vault).get_tasks_on_active_board()
+    }
+
+    a, b = by_title["a"].metadata, by_title["b"].metadata
+    assert (a["status"], a["board"], a["column"]) == ("active", "in-review", 4)
+    assert (b["status"], b["board"], b["column"]) == ("pending", None, 1)
 
 
 def test_there_is_one_board_with_six_columns(test_vault: Path):
@@ -301,7 +323,7 @@ def test_lookups_use_the_last_scan_and_ids_are_stable(test_vault: Path):
     looked_up = backend.get_task_by_id(first["a"].task_id)
     assert looked_up is not None
     assert looked_up.title == "a"
-    assert looked_up.column == 2
+    assert looked_up.column == 1
     both = backend.get_tasks_by_ids([first["a"].task_id, first["b"].task_id])
     assert {t.title for t in both} == {"a", "b"}
 

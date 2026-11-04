@@ -24,13 +24,14 @@ from kanban_tui.classes.column import Column
 from kanban_tui.classes.task import Task
 from kanban_tui.config import TaskAppendModes, VaultBackendSettings
 
-STATUS_COLUMNS: dict[str, int] = {
-    "proposed": 1,
-    "pending": 2,
-    "active": 3,
-    "in-review": 4,
-    "done": 5,
-    "cancelled": 6,
+KNOWN_STATUSES = frozenset({"pending", "active", "done", "cancelled"})
+COLUMN_FIELDS: dict[int, tuple[str, str | None]] = {
+    1: ("pending", "proposed"),
+    2: ("pending", "ready"),
+    3: ("active", "doing"),
+    4: ("active", "in-review"),
+    5: ("done", None),
+    6: ("cancelled", None),
 }
 COLUMN_NAMES: dict[int, str] = {
     1: "Proposed",
@@ -40,8 +41,38 @@ COLUMN_NAMES: dict[int, str] = {
     5: "Done",
     6: "Archive",
 }
-FALLBACK_COLUMN = STATUS_COLUMNS["proposed"]
-ARCHIVE_COLUMN = STATUS_COLUMNS["cancelled"]
+FALLBACK_COLUMN = 1
+DONE_COLUMN = 5
+ARCHIVE_COLUMN = 6
+
+
+def column_for(status: str | None, board: str | None) -> int:
+    """Column a note belongs in, from its `status` and `board` values.
+
+    A missing or unknown status gives the Proposed column.
+    """
+    if status == "pending":
+        return 2 if board == "ready" else 1
+    if status == "active":
+        return 4 if board == "in-review" else 3
+    if status == "done":
+        return DONE_COLUMN
+    if status == "cancelled":
+        return ARCHIVE_COLUMN
+    return FALLBACK_COLUMN
+
+
+def fields_for_column(column: int) -> tuple[str, str | None]:
+    """The `(status, board)` values that put a note in a column.
+
+    `board` is None for Done and Archive, which are set by `status` alone.
+
+    Raises:
+        KeyError: the column does not exist.
+    """
+    return COLUMN_FIELDS[column]
+
+
 PRIORITY_RANK = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
 CATEGORY_PALETTE = [
     "#4C9AFF",
@@ -92,9 +123,9 @@ class VaultBackend(Backend):
                 name=BOARD_NAME,
                 icon="🗃️",
                 creation_date=created,
-                reset_column=STATUS_COLUMNS["pending"],
-                start_column=STATUS_COLUMNS["active"],
-                finish_column=STATUS_COLUMNS["done"],
+                reset_column=2,
+                start_column=3,
+                finish_column=DONE_COLUMN,
             )
         ]
 
@@ -175,13 +206,18 @@ class VaultBackend(Backend):
             warnings.append(f"{note.rel_path}: cannot read date in '{field_name}'")
 
         status = note.status
-        column = STATUS_COLUMNS.get(status or "", FALLBACK_COLUMN)
-        metadata: dict[str, Any] = {"note_path": note.rel_path, "status": status}
-        if status not in STATUS_COLUMNS:
+        column = column_for(status, note.board)
+        metadata: dict[str, Any] = {
+            "note_path": note.rel_path,
+            "status": status,
+            "board": note.board,
+            "column": column,
+        }
+        if status not in KNOWN_STATUSES:
             metadata["unknown_status"] = status
 
         finish_date = None
-        if column == STATUS_COLUMNS["done"]:
+        if column == DONE_COLUMN:
             finished = note.finished or modified.date()
             if date.today() - finished > timedelta(
                 days=self.settings.done_visible_days
@@ -277,12 +313,9 @@ class VaultBackend(Backend):
         category: int | None = None,
         due_date: datetime | str | None = None,
     ) -> Task:
-        status = next(
-            (name for name, number in STATUS_COLUMNS.items() if number == column),
-            None,
-        )
-        if status is None:
+        if column not in COLUMN_FIELDS:
             raise VaultWriteError(f"unknown column {column}")
+        status = fields_for_column(column)[0]
         due = self._read_due_date(due_date)
         project, folder = self._resolve_destination(category)
 
@@ -369,11 +402,7 @@ class VaultBackend(Backend):
     ) -> Task | dict[str, Any]:
         rel_path = new_task.metadata["note_path"]
         scanned_status = new_task.metadata["status"]
-        target_status = next(
-            status
-            for status, column in STATUS_COLUMNS.items()
-            if column == new_task.column
-        )
+        target_status = fields_for_column(new_task.column)[0]
         path = self._vault_root / rel_path
         if path.is_symlink():
             return self._refuse(rel_path, "note is a symlink, move it in Obsidian")
