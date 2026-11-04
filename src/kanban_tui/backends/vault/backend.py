@@ -419,7 +419,8 @@ class VaultBackend(Backend):
         if column_for(current.status, current.board) != scanned_column:
             return self._refuse(
                 rel_path,
-                f"status changed on disk to {current.status!r}, reload the board",
+                f"column changed on disk (status {current.status!r}, "
+                f"board {current.board!r}), reload the board",
             )
 
         finished = date.today() if target_status == "done" else None

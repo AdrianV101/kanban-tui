@@ -207,14 +207,19 @@ def test_entering_done_adds_only_the_finished_line(
 
 
 @pytest.mark.parametrize(
-    "start,old,new",
+    "start,old,new,named",
     [
-        ({"status": "pending"}, "pending", "active"),
-        ({"status": "pending", "board": "ready"}, "board: ready", "board: proposed"),
+        ({"status": "pending"}, "pending", "active", "status 'active'"),
+        (
+            {"status": "pending", "board": "ready"},
+            "board: ready",
+            "board: proposed",
+            "board 'proposed'",
+        ),
     ],
 )
 def test_a_changed_column_on_disk_refuses_the_move(
-    test_vault: Path, start: dict[str, str], old: str, new: str
+    test_vault: Path, start: dict[str, str], old: str, new: str, named: str
 ):
     path = write_task_note(test_vault, NOTE, start)
     backend = make_backend(test_vault)
@@ -228,6 +233,7 @@ def test_a_changed_column_on_disk_refuses_the_move(
     assert isinstance(result, dict)
     assert result["success"] is False
     assert NOTE in result["message"]
+    assert named in result["message"]
     assert path.read_bytes() == before
 
 
