@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CONFIG_PATH = Path("~/.config/vault-board/jobs.toml").expanduser()
-EXAMPLE_NAME = "docs/vault-board/jobs/jobs.example.toml"
+EXAMPLE_NAME = "docs/vault-board/jobs/jobs.example.toml in the kanban-tui repo"
 
 
 class ConfigError(Exception):
@@ -36,7 +36,7 @@ def load_config(path: Path) -> JobsConfig:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise ConfigError(
-            f"Config file not found: {path}. Copy {EXAMPLE_NAME} there and fill it in."
+            f"Config file not found: {path}. Copy the example (see {EXAMPLE_NAME}) there and fill it in."
         ) from None
     except (OSError, tomllib.TOMLDecodeError) as error:
         raise ConfigError(f"Cannot read {path}: {error}") from None

@@ -33,7 +33,18 @@ for label in "${labels[@]}"; do
         "$here/$label.plist.template" > "$plist"
     plutil -lint "$plist"
     launchctl bootout "gui/$UID" "$plist" 2>/dev/null || true
-    launchctl bootstrap "gui/$UID" "$plist"
+    loaded=0
+    for _ in 1 2 3 4 5; do
+        if launchctl bootstrap "gui/$UID" "$plist"; then
+            loaded=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$loaded" -ne 1 ]; then
+        echo "launchctl could not load $label after 5 attempts." >&2
+        exit 1
+    fi
     echo "Installed $label ($plist)"
 done
 

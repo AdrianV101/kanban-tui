@@ -6,6 +6,14 @@ The Mac needs the Obsidian vault folder synced locally, `uv`, Node (for `npx`), 
 
 ## Part A: accounts and tools (before the install)
 
+0. Get the repo. Every repo path below (`docs/...`, `src/...`) is relative to this checkout.
+
+   ```bash
+   mkdir -p ~/Projects
+   [ -d ~/Projects/kanban-tui ] || git clone https://github.com/AdrianV101/kanban-tui.git ~/Projects/kanban-tui
+   cd ~/Projects/kanban-tui && git switch vault-backend && git pull
+   ```
+
 1. Sign the GitHub CLI in to every account the PRs need.
    - Run `gh auth login` once per account.
    - Run `gh auth switch` to put git's usual account back as the active one.
@@ -62,7 +70,7 @@ The Mac needs the Obsidian vault folder synced locally, `uv`, Node (for `npx`), 
    docs/vault-board/jobs/install.sh
    ```
 
-   It fills the plist templates, copies them to `~/Library/LaunchAgents`, and loads them.
+   It fills the plist templates, copies them to `~/Library/LaunchAgents`, and loads them. Both jobs run at load, so installing (and every login) triggers a PR check and a sweep, and each sweep is one Claude run.
 8. Check the jobs loaded and ran:
 
    ```bash
