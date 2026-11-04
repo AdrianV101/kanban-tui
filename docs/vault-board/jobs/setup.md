@@ -33,11 +33,11 @@ The Mac needs the Obsidian vault folder synced locally, `uv`, Node (for `npx`), 
 4. Check headless access. This uses the same restriction flags as the sweep. Replace `<list>` with the comma-separated tool names in `ALLOWED_TOOLS` in `src/kanban_tui/backends/vault/jobs/sweep_agent.py`:
 
    ```bash
-   claude -p "List my three most recent Granola meetings and my three most recent Plaud files by title." --tools "" --permission-mode dontAsk --allowedTools "<list>"
+   claude -p "List my three most recent Granola meetings and my three most recent Plaud files by title." --restricted --tools "" --permission-mode dontAsk --allowedTools "<list>"
    ```
 
    The reply must show titles from both. If it reports a tool as denied or missing, run `claude mcp list`, find the real tool names the two servers expose, and correct `ALLOWED_TOOLS` in `sweep_agent.py` (and its test) to match.
-5. Check that nothing pre-allows a tool that writes. Read `permissions.allow` in `~/.claude/settings.json` and `~/.claude/settings.local.json`. It must not allow Bash, Edit, Write, or any MCP tool that creates, updates or deletes. Remove such entries or tell the owner.
+5. Check that the run sees only Granola and Plaud. `--restricted` ignores the user, project and local settings files, so their allow rules and the plugins they enable don't reach the sweep. Run the same flags with this prompt: "List every tool you have whose name starts with mcp__, one per line, nothing else." The list must hold only `mcp__granola__` and `mcp__plaud__` tools. If any other MCP tool appears (for example a vault plugin's), stop and tell the owner: the sweep must not run until it's gone. Leave `~/.claude/settings.json` as it is; the owner's other sessions rely on it.
 
 ## Part B: install and run
 

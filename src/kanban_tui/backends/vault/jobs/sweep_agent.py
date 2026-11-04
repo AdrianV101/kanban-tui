@@ -75,6 +75,7 @@ Today is {request.today.isoformat()}.
 Rules:
 - Every capture item below gets exactly one draft, with source_key "capture:<id>".
 - Meeting drafts are action items for {owner} only, with source_key "granola:<meeting id>" or "plaud:<file id>" and the meeting's URL or link in "link". Capture drafts have an empty "link".
+- Only read meetings {owner} attended. In Granola, search with attended_only set to true. Skip a teammate's shared notes of a meeting {owner} wasn't in.
 - List a meeting in "examined" (bare id, no prefix) only when its notes were available to you.
 - Skip every meeting whose key is in the processed list below.
 - A meeting found in both Granola and Plaud is drafted from Granola only.
@@ -114,6 +115,9 @@ def run_agent(
         "json",
         "--model",
         model,
+        # Ignores the user's settings files, whose allow rules and plugins
+        # would otherwise hand this run tools beyond the read-only list.
+        "--restricted",
         "--tools",
         "",
         "--permission-mode",
