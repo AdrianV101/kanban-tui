@@ -9,6 +9,7 @@ from kanban_tui.backends.vault.backend import VaultBackend, VaultWriteError
 CAPTURE_PATH = "00-Inbox/Capture.md"
 MAX_ATTEMPTS = 3
 _LINES = re.compile(r"[^\n]*\n|[^\n]+")
+_HEADING = re.compile(r"^ *#{1,6}(?: |$)")
 _BULLET = re.compile(r"^(?:[-*](?:\s+(?:\[.\]\s*)?|$))?")
 
 
@@ -29,7 +30,7 @@ def _raw(line_with_ending: str) -> str:
 
 def _protected_lines(entries: list[str]) -> set[int]:
     """Indexes of the frontmatter block and heading lines, which are never captures."""
-    protected = {i for i, e in enumerate(entries) if e.lstrip().startswith("#")}
+    protected = {i for i, e in enumerate(entries) if _HEADING.match(_raw(e))}
     if entries and _raw(entries[0]).rstrip() == "---":
         for index in range(1, len(entries)):
             if _raw(entries[index]).rstrip() == "---":

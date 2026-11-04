@@ -27,11 +27,20 @@ def write_capture(vault: Path, content: bytes) -> Path:
         ("- [ ] call the plumber", "call the plumber"),
         ("call the plumber", "call the plumber"),
         ("   -   call the plumber  ", "call the plumber"),
+        ("#idea buy milk", "#idea buy milk"),
     ],
 )
 def test_read_strips_bullets_and_whitespace(tmp_path: Path, line: str, text: str):
     write_capture(tmp_path, f"{line}\n".encode())
     assert read_capture_items(tmp_path) == [CaptureItem("c1", line, text)]
+
+
+@pytest.mark.parametrize(
+    "line", ["# Capture", "## Inbox", "#", "  ### x", "###### six"]
+)
+def test_read_skips_markdown_headings(tmp_path: Path, line: str):
+    write_capture(tmp_path, f"{line}\n- real\n".encode())
+    assert [i.text for i in read_capture_items(tmp_path)] == ["real"]
 
 
 def test_read_skips_blank_lines_and_numbers_in_file_order(tmp_path: Path):
