@@ -10,6 +10,7 @@ from kanban_tui.app import KanbanTui
 from kanban_tui.config import Backends
 from kanban_tui.modal.modal_confirm_screen import ModalConfirmScreen
 from kanban_tui.modal.modal_task_screen import ModalTaskEditScreen
+from kanban_tui.widgets.modal_task_widgets import CategorySelector
 from kanban_tui.widgets.task_card import TaskCard
 from tests.conftest import write_task_note
 
@@ -130,6 +131,19 @@ async def test_a_new_card_lands_in_the_focused_column(
         assert find_card(vault_app, "Brand new").task_.column == expected_column
         text = (test_vault / "00-Inbox/brand-new.md").read_text()
         assert "# Brand new" in text
+
+
+async def test_the_new_card_form_offers_no_category_editing(vault_app: KanbanTui):
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+
+        await pilot.press("n")
+        await pilot.pause()
+
+        selector = vault_app.screen.query_one(CategorySelector)
+        values = [value for _, value in selector._options]
+        assert CategorySelector.NEW not in values
+        assert any(isinstance(value, int) for value in values)
 
 
 async def test_a_refused_creation_keeps_the_typed_input(
