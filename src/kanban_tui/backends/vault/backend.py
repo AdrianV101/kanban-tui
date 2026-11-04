@@ -13,6 +13,7 @@ from kanban_tui.backends.vault.notes import (
     NoteReadError,
     TaskNote,
     note_filename,
+    parse_task_note,
     read_task_note,
     render_new_task,
     with_status,
@@ -374,9 +375,12 @@ class VaultBackend(Backend):
             if column == new_task.column
         )
         path = self._vault_root / rel_path
+        if path.is_symlink():
+            return self._refuse(rel_path, "note is a symlink, move it in Obsidian")
         try:
-            current = read_task_note(path, self._vault_root)
+            read_stat = path.stat()
             raw = path.read_bytes().decode("utf-8")
+            current = parse_task_note(raw, rel_path, path.stem)
         except FileNotFoundError:
             return self._refuse(rel_path, "note no longer exists, reload the board")
         except (NoteReadError, OSError, UnicodeDecodeError) as error:
@@ -392,7 +396,9 @@ class VaultBackend(Backend):
         finished = date.today() if target_status == "done" else None
         try:
             updated = with_status(raw, target_status, finished)
-            self._replace_file(path, updated)
+            self._replace_file(path, updated, read_stat)
+        except VaultWriteError as error:
+            return self._refuse(rel_path, str(error))
         except (ValueError, OSError) as error:
             return self._refuse(rel_path, f"cannot write note ({error})")
 
@@ -417,12 +423,20 @@ class VaultBackend(Backend):
         return f"obsidian://open?vault={vault}&file={quote(rel_path, safe='')}"
 
     @staticmethod
-    def _replace_file(path: Path, content: str) -> None:
+    def _replace_file(path: Path, content: str, read_stat: os.stat_result) -> None:
         handle, temp_name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
         try:
             with os.fdopen(handle, "wb") as temp_file:
                 temp_file.write(content.encode("utf-8"))
-            os.chmod(temp_name, path.stat().st_mode)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+            os.chmod(temp_name, read_stat.st_mode)
+            latest = path.stat()
+            if (latest.st_mtime_ns, latest.st_size) != (
+                read_stat.st_mtime_ns,
+                read_stat.st_size,
+            ):
+                raise VaultWriteError("note changed on disk, reload the board")
             os.replace(temp_name, path)
         except BaseException:
             Path(temp_name).unlink(missing_ok=True)

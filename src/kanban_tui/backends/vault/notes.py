@@ -75,7 +75,18 @@ def read_task_note(path: Path, vault_root: Path) -> TaskNote | None:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as error:
         raise NoteReadError(f"{rel_path}: cannot read note ({error})") from error
+    return parse_task_note(text, rel_path, path.stem)
 
+
+def parse_task_note(text: str, rel_path: str, fallback_title: str) -> TaskNote | None:
+    """Parse note text into a TaskNote, or None when it is not a task note.
+
+    Line endings are normalised to `\\n` in the result, as a text-mode read does.
+
+    Raises:
+        NoteReadError: the frontmatter is malformed.
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     parts = split_frontmatter(text)
     if parts is None:
         return None
@@ -103,7 +114,7 @@ def read_task_note(path: Path, vault_root: Path) -> TaskNote | None:
         rel_path=rel_path,
         text=text,
         frontmatter=frontmatter,
-        title=read_title(body, path.stem),
+        title=read_title(body, fallback_title),
         description=read_description(body),
         status=None if raw_status is None else str(raw_status),
         project=None if raw_project is None else str(raw_project),

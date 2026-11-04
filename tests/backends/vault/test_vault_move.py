@@ -1,8 +1,10 @@
+import os
 from pathlib import Path
 
 import pytest
 from freezegun import freeze_time
 
+from kanban_tui.backends.vault import backend as backend_module
 from kanban_tui.backends.vault.backend import STATUS_COLUMNS, VaultBackend
 from kanban_tui.config import VaultBackendSettings
 from tests.conftest import write_task_note
@@ -188,3 +190,98 @@ def test_a_missing_note_refuses_the_move(test_vault: Path, how: str):
     assert result["success"] is False
     assert NOTE in result["message"]
     assert sorted(test_vault.rglob("*")) == files_before
+
+
+@pytest.mark.parametrize("when", ["after_read", "before_replace"])
+def test_a_status_written_during_the_move_is_not_overwritten(
+    test_vault: Path, monkeypatch: pytest.MonkeyPatch, when: str
+):
+    path = write_task_note(test_vault, NOTE, {"status": "pending"})
+    backend = make_backend(test_vault)
+    (task,) = backend.get_tasks_on_active_board()
+    task.column = STATUS_COLUMNS["active"]
+    changed: list[bool] = []
+
+    def change_note_once() -> None:
+        if changed:
+            return
+        changed.append(True)
+        original = Path.read_bytes(path)
+        path.write_bytes(original.replace(b"pending", b"in-review"))
+
+    if when == "after_read":
+        real_read_bytes = Path.read_bytes
+        real_read_text = Path.read_text
+
+        def read_bytes(self: Path) -> bytes:
+            data = real_read_bytes(self)
+            if self == path:
+                change_note_once()
+            return data
+
+        def read_text(self: Path, *args, **kwargs) -> str:
+            text = real_read_text(self, *args, **kwargs)
+            if self == path:
+                change_note_once()
+            return text
+
+        monkeypatch.setattr(Path, "read_bytes", read_bytes)
+        monkeypatch.setattr(Path, "read_text", read_text)
+    else:
+        real_chmod = os.chmod
+
+        def chmod(target, mode):
+            change_note_once()
+            real_chmod(target, mode)
+
+        monkeypatch.setattr(backend_module.os, "chmod", chmod)
+
+    result = backend.update_task_status(task)
+
+    monkeypatch.undo()
+    assert isinstance(result, dict)
+    assert result["success"] is False
+    assert NOTE in result["message"]
+    assert "\nstatus: in-review\n" in path.read_text()
+    assert not list(path.parent.glob("*.tmp"))
+
+
+def test_the_new_content_is_flushed_to_disk_before_it_replaces_the_note(
+    test_vault: Path, monkeypatch: pytest.MonkeyPatch
+):
+    write_task_note(test_vault, NOTE, {"status": "pending"})
+    backend = make_backend(test_vault)
+    calls: list[str] = []
+    real_fsync, real_replace = os.fsync, os.replace
+
+    def fsync(fd):
+        calls.append("fsync")
+        real_fsync(fd)
+
+    def replace(source, target):
+        calls.append("replace")
+        real_replace(source, target)
+
+    monkeypatch.setattr(backend_module.os, "fsync", fsync)
+    monkeypatch.setattr(backend_module.os, "replace", replace)
+
+    move_only_card(backend, STATUS_COLUMNS["active"])
+
+    assert calls == ["fsync", "replace"]
+
+
+def test_a_symlinked_note_refuses_the_move_and_stays_a_link(test_vault: Path):
+    target = test_vault.parent / "elsewhere.md"
+    target.write_text("---\ntype: task\nstatus: pending\n---\nbody\n")
+    link = test_vault / NOTE
+    link.parent.mkdir(parents=True)
+    link.symlink_to(target)
+    backend = make_backend(test_vault)
+
+    result = move_only_card(backend, STATUS_COLUMNS["active"])
+
+    assert isinstance(result, dict)
+    assert result["success"] is False
+    assert NOTE in result["message"]
+    assert link.is_symlink()
+    assert "status: pending" in target.read_text()
