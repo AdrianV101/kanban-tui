@@ -123,14 +123,21 @@ class VaultBackend(Backend):
 
     # === Scanning ===
 
-    def _find_note_paths(self) -> list[Path]:
-        if not self.settings.vault_path or not self._vault_root.is_dir():
+    def _find_note_paths(self, warnings: list[str]) -> list[Path]:
+        if not self.settings.vault_path:
+            warnings.append("vault_path is not set")
+            return []
+        if not self._vault_root.is_dir():
+            warnings.append(f"vault_path {self._vault_root} is not a directory")
             return []
         found: dict[Path, None] = {}
         for pattern in self.settings.task_globs:
             for path in sorted(self._vault_root.glob(pattern)):
                 if path.is_file():
                     found[path] = None
+        if not found:
+            globs = ", ".join(self.settings.task_globs)
+            warnings.append(f"no notes in {self._vault_root} match {globs}")
         return list(found)
 
     def _read_category_name(self, note: TaskNote) -> str | None:
@@ -204,7 +211,7 @@ class VaultBackend(Backend):
     def _scan(self) -> None:
         warnings: list[str] = []
         entries: list[tuple[Task, TaskNote]] = []
-        for path in self._find_note_paths():
+        for path in self._find_note_paths(warnings):
             try:
                 note = read_task_note(path, self._vault_root)
                 if note is None:

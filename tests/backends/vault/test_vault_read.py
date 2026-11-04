@@ -29,10 +29,33 @@ def test_only_task_notes_under_the_globs_become_cards(test_vault: Path):
 
 
 def test_vault_without_task_notes_gives_an_empty_board(test_vault: Path):
+    (test_vault / "00-Inbox").mkdir()
+    (test_vault / "00-Inbox/plain.md").write_text("just a note\n", encoding="utf-8")
     backend = make_backend(test_vault)
 
     assert backend.get_tasks_on_active_board() == []
     assert backend.get_warnings() == []
+
+
+@pytest.mark.parametrize("problem", ["empty_path", "missing_dir", "no_glob_match"])
+def test_a_vault_that_cannot_give_notes_is_named_in_a_warning(
+    test_vault: Path, tmp_path: Path, problem: str
+):
+    if problem == "empty_path":
+        backend = VaultBackend(VaultBackendSettings(vault_path=""))
+    elif problem == "missing_dir":
+        backend = make_backend(tmp_path / "typo")
+    else:
+        backend = make_backend(test_vault)
+
+    assert backend.get_tasks_on_active_board() == []
+    (warning,) = backend.get_warnings()
+    expected = {
+        "empty_path": "vault_path",
+        "missing_dir": "typo",
+        "no_glob_match": "01-Projects/*/tasks/*.md",
+    }[problem]
+    assert expected in warning
 
 
 @pytest.mark.parametrize(
