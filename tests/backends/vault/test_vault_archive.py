@@ -10,7 +10,7 @@ def make_backend(vault: Path) -> VaultBackend:
 
 
 def test_archiving_keeps_the_note(tmp_path: Path):
-    vault = tmp_path / "PKM"
+    vault = tmp_path / "Notes"
     note = write_task_note(
         vault, "01-Projects/Alpha/tasks/note.md", {"status": "active"}
     )
@@ -26,11 +26,11 @@ def test_archiving_keeps_the_note(tmp_path: Path):
 
 
 def test_the_obsidian_link_encodes_vault_and_path(tmp_path: Path):
-    vault = tmp_path / "PKM"
-    write_task_note(vault, "01-Projects/Next Steps/tasks/a b.md")
+    vault = tmp_path / "Notes"
+    write_task_note(vault, "01-Projects/Side Project/tasks/a b.md")
     backend = make_backend(vault)
     (task,) = backend.get_tasks_on_active_board()
 
     assert backend.note_url(task) == (
-        "obsidian://open?vault=PKM&file=01-Projects%2FNext%20Steps%2Ftasks%2Fa%20b"
+        "obsidian://open?vault=Notes&file=01-Projects%2FSide%20Project%2Ftasks%2Fa%20b"
     )

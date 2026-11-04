@@ -10,8 +10,8 @@ from kanban_tui.config import VaultBackendSettings
 from tests.conftest import write_task_note
 
 FROZEN_DAY = "2026-11-04"
-SCOPE_TASKS = "01-Projects/Scope/tasks"
-NEXT_STEPS_TASKS = "01-Projects/Next Steps/tasks"
+WORK_TASKS = "01-Projects/Work/tasks"
+SIDE_PROJECT_TASKS = "01-Projects/Side Project/tasks"
 
 
 def make_backend(vault: Path) -> VaultBackend:
@@ -19,8 +19,8 @@ def make_backend(vault: Path) -> VaultBackend:
 
 
 def seed_vault(vault: Path, personal: bool = True) -> VaultBackend:
-    write_task_note(vault, f"{SCOPE_TASKS}/seed.md", {"project": "Scope"})
-    write_task_note(vault, f"{NEXT_STEPS_TASKS}/seed.md", {"project": "Next Steps"})
+    write_task_note(vault, f"{WORK_TASKS}/seed.md", {"project": "Work"})
+    write_task_note(vault, f"{SIDE_PROJECT_TASKS}/seed.md", {"project": "Side Project"})
     if personal:
         write_task_note(vault, "00-Inbox/seed.md")
     return make_backend(vault)
@@ -39,8 +39,14 @@ def list_files(vault: Path) -> set[Path]:
 @pytest.mark.parametrize(
     "category_name,personal_notes,folder,project,due_input",
     [
-        ("Scope", True, SCOPE_TASKS, "Scope", datetime(2026, 12, 1)),
-        ("Next Steps", True, NEXT_STEPS_TASKS, "Next Steps", "2026-12-01 00:00:00"),
+        ("Work", True, WORK_TASKS, "Work", datetime(2026, 12, 1)),
+        (
+            "Side Project",
+            True,
+            SIDE_PROJECT_TASKS,
+            "Side Project",
+            "2026-12-01 00:00:00",
+        ),
         ("Personal", True, "00-Inbox", None, None),
         (None, False, "00-Inbox", None, "2026-12-01 00:00:00"),
     ],
@@ -100,15 +106,15 @@ def test_a_clashing_filename_gets_a_numbered_suffix_and_is_never_overwritten(
     test_vault: Path,
 ):
     backend = seed_vault(test_vault)
-    scope = category_id(backend, "Scope")
-    existing = test_vault / SCOPE_TASKS / "fix-it.md"
+    work = category_id(backend, "Work")
+    existing = test_vault / WORK_TASKS / "fix-it.md"
     existing.write_text("my own note", encoding="utf-8")
 
     for _ in range(3):
-        backend.create_new_task("Fix it", "", column=2, category=scope)
+        backend.create_new_task("Fix it", "", column=2, category=work)
 
     assert existing.read_text() == "my own note"
-    created = {p.name for p in (test_vault / SCOPE_TASKS).glob("fix-it*.md")}
+    created = {p.name for p in (test_vault / WORK_TASKS).glob("fix-it*.md")}
     assert created == {"fix-it.md", "fix-it-2.md", "fix-it-3.md", "fix-it-4.md"}
 
 
@@ -117,7 +123,7 @@ def test_creation_is_refused_when_it_cannot_be_done_correctly(
     test_vault: Path, problem: str
 ):
     backend = seed_vault(test_vault)
-    scope = category_id(backend, "Scope")
+    work = category_id(backend, "Work")
     if problem == "missing_template":
         (test_vault / "05-Templates/task.md").unlink()
     before = list_files(test_vault)
@@ -127,7 +133,7 @@ def test_creation_is_refused_when_it_cannot_be_done_correctly(
             "Anything",
             "",
             column=2,
-            category=scope if problem == "missing_template" else 999,
+            category=work if problem == "missing_template" else 999,
         )
 
     assert list_files(test_vault) == before

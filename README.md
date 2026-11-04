@@ -213,13 +213,13 @@ Set the backend in the config file (`kanban-tui info` shows where it is):
 mode = "vault"
 
 [backend.vault_settings]
-vault_path = "~/Documents/PKM"
+vault_path = "~/Documents/Notes"
 task_globs = ["01-Projects/*/tasks/*.md", "00-Inbox/*.md"]
 done_visible_days = 7
 personal_category = "Personal"
 
 [backend.vault_settings.project_colors]
-Scope = "#4C9AFF"
+Work = "#4C9AFF"
 ```
 
 | setting             | default                                          | meaning |
