@@ -156,11 +156,12 @@ def with_status(text: str, status: str, finished: date | None) -> str:
         content = line.rstrip("\r\n")
         match = pattern.match(content)
         assert match is not None
-        quote = match.group(2)[:1] if match.group(2)[:1] in "\"'" else ""
-        lines[index] = (
-            f"{match.group(1)}{quote}{value}{quote}{match.group(3)}"
-            f"{line[len(content) :]}"
-        )
+        prefix, old_value, comment = match.groups()
+        if not old_value:
+            prefix = prefix if prefix[-1] in " \t" else prefix + " "
+            comment = f" {comment}" if comment else ""
+        quote = old_value[:1] if old_value[:1] in "\"'" else ""
+        lines[index] = f"{prefix}{quote}{value}{quote}{comment}{line[len(content) :]}"
 
     replace_value(status_index, STATUS_LINE, status)
     if finished is not None:

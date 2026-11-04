@@ -64,6 +64,18 @@ def test_a_move_writes_the_columns_status(test_vault: Path, status: str, column:
             "---\ntype: task\nstatus: active\n---\n",
         ),
         (
+            "---\ntype: task\nstatus:\n---\nbody\n",
+            "---\ntype: task\nstatus: active\n---\nbody\n",
+        ),
+        (
+            "---\ntype: task\nstatus: \n---\nbody\n",
+            "---\ntype: task\nstatus: active\n---\nbody\n",
+        ),
+        (
+            "---\ntype: task\nstatus: # c\n---\nbody\n",
+            "---\ntype: task\nstatus: active # c\n---\nbody\n",
+        ),
+        (
             (
                 "---\ntype: task\ntags:\n  - a\n  - b\nstatus: pending\n---\n"
                 "# T\n\n- [[Some Note]]\n- [[Other|alias]]\n"
