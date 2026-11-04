@@ -281,29 +281,10 @@
 - [ ] **Step 4: Run** `make test`, `uv run --frozen ruff check .`, `uv run --frozen ruff format --check .` and `uv run --frozen mypy . | tail -1`. Expected: all green, and mypy at 152.
 - [ ] **Step 5: Commit** with the message "feat(vault): vault-board command, launchd schedules and setup docs".
 
-### Task 7: Mac mini setup and first runs (controller and owner, not a subagent)
+### Task 7: Mac mini setup and first runs (on the Mac mini, not a subagent)
 
-The owner does steps 1 to 4 at the Mac mini, in person or over Screen Sharing, following `setup.md`. The controller does the rest over ssh once this MacBook is on the tailnet. Otherwise the owner runs them.
+A Claude session on the Mac mini does this with the owner. It follows a runbook in the owner's private copy of this plan, which holds the account names and records a log that reaches other devices through Obsidian Sync. `docs/vault-board/jobs/setup.md` is the generic version.
 
-- [ ] **Step 1:** Push `vault-backend`. On the Mac mini, run `uv tool install "kanban-tui[vault] @ git+https://github.com/AdrianV101/kanban-tui@vault-backend"`, then check `vault-board --help`.
-- [ ] **Step 2:** `gh auth login` as the work account. The personal account is already signed in. `gh auth status` lists both.
-- [ ] **Step 3:** Add the MCP servers at user scope.
-  - Run `claude mcp add -s user granola --transport http https://mcp.granola.ai/mcp`.
-  - Add the Plaud server (`npx -y @plaud-ai/mcp@latest`, with the absolute `npx` path) under the name `plaud`.
-  - Open `claude`, authenticate Granola through `/mcp`, and call Plaud's login.
-- [ ] **Step 4:** Write `~/.config/vault-board/jobs.toml`.
-  - Set `owner_name`.
-  - `gh_accounts` maps each GitHub org or user to the account that can read its PRs.
-- [ ] **Step 5:** Check the tool names. A headless `claude -p` lists its Granola and Plaud tool names. If any differ from the pinned list, fix the list and commit.
-- [ ] **Step 6:** Do the first runs on a copy.
-  - Copy the task folders, the template and `Capture.md` into a scratch vault, with a config pointing at it and a scratch state path.
-  - Run `vault-board pr-check`, then `vault-board sweep`.
-  - Read the drafts and the output.
-- [ ] **Step 7:** Go live.
-  - Run both commands against the real vault once by hand.
-  - Run `install.sh`.
-  - Check the logs after the next hourly run and after the next 06:30 sweep.
-- [ ] **Step 8:** Set up the phone (part 4).
-  - The owner builds the Shortcut from `phone-shortcut.md` and captures one line.
-  - Run the sweep by hand. The draft shows in Proposed.
-- [ ] **Step 9:** Record it. Update the README status table, `progress.md` and the devlog, then push.
+- [ ] **Step 1:** Runbook Part A: GitHub work account, Granola and Plaud MCP servers, sign-ins, and a headless check of the tool names. It can run before the code exists.
+- [ ] **Step 2:** Runbook Part B: install from `vault-backend`, write the config, run both jobs on a scratch copy, go live with the owner's go-ahead, install the schedules, and test a phone capture end to end. It runs after Tasks 1 to 6 are pushed.
+- [ ] **Step 3 (MacBook):** Read the Mac mini log. If the tool names differ from the pinned list, fix the list and push. Then update the README status table, `progress.md` and the devlog, and push.
