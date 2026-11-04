@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status:** Tasks 1 to 6 done on 2026-11-04 (commits `f0ffd5a`..`77aa6df`). Rulings that changed this plan, such as the sweep's extra restriction flags and recording a meeting on its first draft, are listed in [progress.md](../progress.md).
+
 **Goal:** Two scheduled jobs on the Mac mini keep the vault board current. An hourly PR check moves In Review cards when their PRs close. A morning sweep turns phone captures and meeting action items into Proposed drafts. A phone Shortcut feeds `00-Inbox/Capture.md`.
 
 **Architecture:** Both jobs are subcommands of a new fork-only `vault-board` command in the kanban-tui fork, so every note write goes through the vault backend's conflict-checked write path. The PR check is plain Python over `gh`. The sweep runs one headless `claude -p` that may only read Granola and Plaud. It returns drafts as JSON, and the script writes the notes, removes captured lines and keeps a small state file. De-duplication and "a line leaves `Capture.md` only after its draft exists" are therefore enforced by code, not by the prompt. Two LaunchAgents schedule the jobs. Personal settings (vault path, owner name, GitHub accounts) live in a config file on the Mac mini, not in the public fork.

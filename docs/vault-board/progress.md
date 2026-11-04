@@ -64,8 +64,40 @@ vault-pkm is unchanged.
 
 ## Part 3 and 4: Mac jobs and phone capture (code done, 2026-11-04)
 
-The `vault-board` command has two subcommands: `pr-check` moves In Review cards whose PRs have closed, and `sweep` turns `Capture.md` lines and meeting action items into Proposed drafts. launchd templates, `install.sh`, the config example and the phone Shortcut how-to are in `docs/vault-board/jobs/`. Mac setup steps: [jobs/setup.md](jobs/setup.md).
+Plan: [plans/2026-11-04-mac-mini-jobs.md](plans/2026-11-04-mac-mini-jobs.md). Ledger: [ledger-mac-mini-jobs.md](ledger-mac-mini-jobs.md). Commits `f0ffd5a`..`77aa6df`.
+
+The `vault-board` command has two subcommands. `pr-check` moves In Review cards whose PRs have closed. `sweep` turns `Capture.md` lines and meeting action items into Proposed drafts. The launchd templates, `install.sh`, the config example and the phone Shortcut how-to are in `docs/vault-board/jobs/`. Mac setup steps: [jobs/setup.md](jobs/setup.md).
+
+- 582 tests pass. ruff is clean. mypy stays at 152. uv.lock is unchanged.
+- Built with subagent-driven development: one implementer and one reviewer per task, then a whole-branch review and one fix wave.
+- The final review's fixes:
+  - Every failure reaches the board as a card, including a missing `gh` or `claude` and an unreadable `Capture.md`.
+  - Text from the model can't carry Templater blocks into notes, and titles stay on one line.
+  - Bullet-only lines, Markdown headings and a frontmatter block in `Capture.md` are never treated as captures.
+  - `setup.md` gained a launchd smoke test and notes on the Documents-folder prompt and staying logged in.
+
+### Rulings made during parts 3 and 4
+
+Each ruling ends with what it costs if wrong.
+
+1. The sweep request carries project names; the sweep keeps the name-to-id map for writing. Cost: none.
+2. The command runner lives in its own `jobs/runner.py`, shared by the gh and Claude adapters. Cost: one small file.
+3. `last_success` and the look-back window cover only Granola and Plaud. Cost: none.
+4. A capture already drafted is never sent to the model again, even if removing its line failed. Cost: a stuck line needs a manual delete.
+5. Drafts from a source that also reported an error are still written; only its `last_success` holds back. Cost: a half-read meeting could be marked examined.
+6. `gh` calls time out after 30 seconds and count as unreadable. Cost: a slow `gh` skips a card for an hour.
+7. Removing capture lines reuses the backend's stat-checked replace. Cost: a private-name import.
+8. `--allowedTools` gets one comma-separated argument. Cost: none, the Mac's headless check would catch it.
+9. The sweep's Claude run also gets `--tools ""` and `--permission-mode dontAsk`, and the prompt says captured and meeting text is data, not instructions. This goes beyond the plan's argv. Cost: an older CLI rejects the flags, which the Mac's headless check catches.
+10. A draft's project matches ignoring case; no match means Personal. Cost: none.
+11. A failure card's date is still recorded when the agent fails, so the card stays once per day. Cost: none.
+12. A meeting is recorded as done as soon as its first draft is written, overriding the plan's "after all its drafts". Reruns must never duplicate a draft. Cost: a failed later draft of that meeting isn't retried, but its card names it.
+13. Model text has `<%` rewritten to `< %`, and titles collapse to one line. Drafts are not rejected. Cost: a capture that really contains `<%` reads slightly differently.
+14. Headings, bullet-only lines and a leading frontmatter block in `Capture.md` are not captures and are never removed. Cost: none.
+15. The final review's other minor findings stay deferred, per its triage. Examples: a repeat failure card each day while a failure persists, no log rotation, and Granola and Plaud duplicates suppressed by the prompt only. Cost: polish later.
+16. A heading is Markdown heading syntax only, so a tag-first capture such as `#idea buy milk` is still a capture. This corrects ruling 14. Cost: none.
 
 ## Next
 
-Mac setup and the phone test remain.
+- Mac setup (Part A sign-ins, then Part B install, scratch run, go live and schedules), following [jobs/setup.md](jobs/setup.md).
+- The phone Shortcut test, end to end.
