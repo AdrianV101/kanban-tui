@@ -96,6 +96,8 @@ Each ruling ends with what it costs if wrong.
 14. Headings, bullet-only lines and a leading frontmatter block in `Capture.md` are not captures and are never removed. Cost: none.
 15. The final review's other minor findings stay deferred, per its triage. Examples: a repeat failure card each day while a failure persists, no log rotation, and Granola and Plaud duplicates suppressed by the prompt only. Cost: polish later.
 16. A heading is Markdown heading syntax only, so a tag-first capture such as `#idea buy milk` is still a capture. This corrects ruling 14. Cost: none.
+17. After the jobs host's first check, the sweep's Claude also runs with `--restricted`. The host's user settings pre-allowed vault plugin tools, which reached the run despite ruling 9. Restricted mode ignores the settings files, and the owner's settings stay unchanged. Cost: if a future CLI changes what `--restricted` loads, the setup check in `jobs/setup.md` catches it.
+18. Granola is read for meetings the owner attended only, so teammates' shared notes aren't scanned. Cost: action items for the owner from a meeting they missed are not drafted.
 
 ## Next
 
