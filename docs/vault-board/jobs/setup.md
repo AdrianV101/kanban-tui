@@ -80,4 +80,18 @@ The Mac needs the Obsidian vault folder synced locally, `uv`, Node (for `npx`), 
    ```
 
    Each log starts every run with a `<command> started <time>` line.
+
+   Then run each job once by hand through launchd and read its log:
+
+   ```bash
+   launchctl kickstart -k gui/$UID/com.vault-board.pr-check
+   launchctl kickstart -k gui/$UID/com.vault-board.sweep
+   cat ~/Library/Logs/vault-board-pr-check.log ~/Library/Logs/vault-board-sweep.log
+   ```
+
+   Each log must show a `started` line and a summary line for the new run.
+
+   A vault under `~/Documents` is a protected folder. The first run under launchd may raise a macOS prompt asking to allow access to the Documents folder. Approve it at the Mac or over Screen Sharing. If a log shows "Operation not permitted", grant Full Disk Access (System Settings, Privacy & Security) to the Python interpreter `vault-board` runs on. `head -1 "$(command -v vault-board)"` shows its path.
+
+   LaunchAgents and the Claude login only exist in a logged-in session. Keep the Mac logged in to its desktop session, and do not let it sleep through 06:30.
 9. After a Node upgrade, rerun `docs/vault-board/jobs/install.sh` so the jobs pick up the new Node folder.

@@ -125,6 +125,10 @@ def run_agent(
         code, stdout, stderr = run(argv, {}, timeout_s)
     except subprocess.TimeoutExpired:
         raise AgentError(f"Claude run timed out after {timeout_s}s") from None
+    except OSError as error:
+        raise AgentError(
+            f"cannot run {claude_path}: {_one_line(str(error))}"
+        ) from error
     if code != 0:
         raise AgentError(f"Claude exited with code {code}: {_one_line(stderr)}")
     return _parse_reply(_reply_text(stdout))

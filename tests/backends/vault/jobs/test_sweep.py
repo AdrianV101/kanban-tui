@@ -375,3 +375,61 @@ def test_unreadable_state_makes_one_card_and_changes_nothing(
     assert state_path.read_text() == "{not json"
     assert capture.read_text() == "- buy stamps\n"
     assert titles(backend).count(GENERAL) == 1
+
+
+def test_unexpected_agent_exception_files_the_general_card(
+    vault: Path, backend: VaultBackend, state_path: Path
+):
+    capture = write_capture(vault, "- buy stamps\n")
+    report = sweep(backend, state_path, FakeAgent(RuntimeError("boom\nbang")))
+
+    assert not report.ok
+    assert report.errors == {GENERAL: "RuntimeError: boom bang"}
+    assert titles(backend).count(GENERAL) == 1
+    assert capture.read_text() == "- buy stamps\n"
+    assert load_state(state_path).failure_cards == {GENERAL: ISO}
+
+
+def test_non_utf8_capture_files_the_general_card(
+    vault: Path, backend: VaultBackend, state_path: Path
+):
+    path = vault / CAPTURE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"- caf\xe9\n")
+    agent = FakeAgent(result())
+    report = sweep(backend, state_path, agent)
+
+    assert not report.ok
+    assert GENERAL in report.errors
+    assert report.errors[GENERAL].startswith("UnicodeDecodeError")
+    assert titles(backend).count(GENERAL) == 1
+    assert agent.requests == []
+
+
+def test_model_text_cannot_run_templates_or_break_the_heading(
+    vault: Path, backend: VaultBackend, state_path: Path
+):
+    write_capture(vault, "- buy stamps\n")
+    hostile = Draft(
+        "capture:c1",
+        "Send\n<%* x %> quote\r\n\t now ",
+        "Personal",
+        "see <% tp.file.title %>",
+        "",
+    )
+    meeting = Draft(
+        "granola:m1", "Call <%* y %>", "Personal", "c", "https://x.test/<%a%>"
+    )
+    report = sweep(
+        backend, state_path, FakeAgent(result([hostile, meeting], granola=["m1"]))
+    )
+
+    assert report.ok
+    assert len(report.created) == 2
+    for rel in report.created:
+        text = (vault / rel).read_text(encoding="utf-8")
+        assert "<%" not in text
+        headings = [line for line in text.splitlines() if line.startswith("# ")]
+        assert len(headings) == 1
+    first = (vault / report.created[0]).read_text(encoding="utf-8")
+    assert "# Send < %* x %> quote now" in first

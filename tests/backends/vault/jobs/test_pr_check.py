@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from kanban_tui.backends.vault.backend import VaultBackend
-from kanban_tui.backends.vault.jobs.github import PrFetchError, PrState
+from kanban_tui.backends.vault.jobs.github import GhPrStates, PrFetchError, PrState
 from kanban_tui.backends.vault.jobs.pr_check import check_prs
 from kanban_tui.config import VaultBackendSettings
 from tests.conftest import write_task_note
@@ -171,4 +171,21 @@ def test_concurrent_move_is_refused_and_reported(test_vault: Path):
     assert "status: done" not in path.read_text()
     assert report.done == []
     assert [p for p, _ in report.skipped] == [NOTE]
+    assert not report.ok
+
+
+def test_missing_gh_skips_each_card_with_a_reason_and_keeps_going(test_vault: Path):
+    def missing(argv, env, timeout):
+        raise FileNotFoundError(2, "No such file or directory", "gh")
+
+    gh = GhPrStates({}, missing)
+    first = in_review(test_vault, NOTE, [url(1)])
+    in_review(test_vault, OTHER, [url(2)])
+    before = first.read_bytes()
+
+    report = check_prs(make_backend(test_vault), gh.state, TODAY)
+
+    assert first.read_bytes() == before
+    assert sorted(path for path, _ in report.skipped) == [NOTE, OTHER]
+    assert all("cannot run gh" in reason for _, reason in report.skipped)
     assert not report.ok

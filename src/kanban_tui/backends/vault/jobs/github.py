@@ -60,10 +60,10 @@ class GhPrStates:
             state = json.loads(stdout)["state"]
         except (ValueError, KeyError, TypeError) as error:
             raise PrFetchError(
-                f"unreadable gh output ({error}): {stderr.strip()}"
+                _with_detail(f"unreadable gh output ({error})", stderr)
             ) from error
         if state not in get_args(PrState):
-            raise PrFetchError(f"unexpected PR state {state!r}: {stderr.strip()}")
+            raise PrFetchError(_with_detail(f"unexpected PR state {state!r}", stderr))
         return state
 
     def _token(self, account: str) -> str:
@@ -85,3 +85,10 @@ class GhPrStates:
             raise PrFetchError(
                 f"gh timed out after {GH_TIMEOUT_SECONDS} seconds"
             ) from error
+        except OSError as error:
+            raise PrFetchError(f"cannot run {argv[0]}: {error}") from error
+
+
+def _with_detail(message: str, stderr: str) -> str:
+    detail = " ".join(stderr.split())
+    return f"{message}: {detail}" if detail else message

@@ -214,3 +214,12 @@ def test_prompt_carries_inputs_and_rules() -> None:
         '"errors"',
     ]:
         assert expected in prompt
+
+
+def test_unrunnable_claude_raises_agent_error() -> None:
+    runner = FakeRunner(FileNotFoundError(2, "No such file", "/opt/bin/claude"))
+
+    with pytest.raises(AgentError, match="cannot run /opt/bin/claude") as raised:
+        run_agent(make_request(), CLAUDE, "m", runner)
+
+    assert "\n" not in str(raised.value)

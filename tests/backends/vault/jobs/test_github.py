@@ -123,3 +123,22 @@ def test_timeout_raises_fetch_error():
 def test_pr_url_that_is_not_github_raises():
     with pytest.raises(PrFetchError):
         GhPrStates({}, gh_runner((0, "{}", ""))).state("https://example.com/x")
+
+
+def test_missing_gh_raises_fetch_error():
+    def missing(argv, env, timeout):
+        raise FileNotFoundError(2, "No such file or directory", "gh")
+
+    with pytest.raises(PrFetchError, match="cannot run gh"):
+        GhPrStates({}, missing).state(URL)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [(0, "not json", ""), (0, json.dumps({"state": "DRAFT"}), "")],
+)
+def test_fetch_error_message_has_no_dangling_separator(output: tuple[int, str, str]):
+    with pytest.raises(PrFetchError) as raised:
+        GhPrStates({}, gh_runner(output)).state(URL)
+
+    assert not str(raised.value).rstrip().endswith(":")

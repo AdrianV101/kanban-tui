@@ -100,3 +100,28 @@ def test_remove_gives_up_after_three_attempts_leaving_the_file(
     assert len(attempts) == 3
     assert path.read_bytes() == b"- a\n" + b"- x\n" * 3
     assert list(path.parent.glob("*.tmp")) == []
+
+
+@pytest.mark.parametrize("line", ["-", "- ", "* ", "*", "- [ ]", "- [x] ", "  -  "])
+def test_read_skips_bullet_only_lines(tmp_path: Path, line: str):
+    write_capture(tmp_path, f"{line}\n- real\n".encode())
+    assert [i.text for i in read_capture_items(tmp_path)] == ["real"]
+
+
+def test_read_skips_frontmatter_and_headings(tmp_path: Path):
+    write_capture(
+        tmp_path, b"---\ntags: [capture]\n---\n# Capture\n- one\n  ## sub\ntwo\n"
+    )
+    assert [(i.id, i.text) for i in read_capture_items(tmp_path)] == [
+        ("c1", "one"),
+        ("c2", "two"),
+    ]
+
+
+def test_remove_leaves_frontmatter_and_headings_byte_identical(tmp_path: Path):
+    path = write_capture(
+        tmp_path, b"---\ntags: [capture]\n---\n# Capture\n- one\n- two\n"
+    )
+    items = read_capture_items(tmp_path)
+    remove_capture_lines(tmp_path, [i.line for i in items])
+    assert path.read_bytes() == b"---\ntags: [capture]\n---\n# Capture\n"

@@ -79,6 +79,9 @@ def run_sweep(
         _sweep(
             backend, vault, state, state_path, agent, owner_name, today, report, problem
         )
+    except Exception as error:
+        detail = " ".join(str(error).split())
+        problem(GENERAL_TITLE, f"{type(error).__name__}: {detail}")
     finally:
         _file_cards(backend, report, problems, state, today)
         prune(state, today)
@@ -230,16 +233,22 @@ def _write(
     source: str,
 ) -> Task | str:
     category = categories.get(draft.project.strip().lower())
+    title = " ".join(_defuse(draft.title).split())
     try:
         return backend.create_new_task(
-            title=draft.title,
-            description=draft.context,
+            title=title,
+            description=_defuse(draft.context),
             column=PROPOSED_COLUMN,
             category=category,
-            source=source,
+            source=_defuse(source),
         )
     except VaultWriteError as error:
         return str(error)
+
+
+def _defuse(text: str) -> str:
+    """Model text comes from other people's words; stop Templater from running it."""
+    return text.replace("<%", "< %")
 
 
 def _file_cards(
