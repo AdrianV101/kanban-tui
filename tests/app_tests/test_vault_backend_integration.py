@@ -229,3 +229,52 @@ async def test_edit_opens_the_note_in_obsidian(
             "obsidian://open?vault=vault&file=01-Projects%2FAlpha%2Ftasks%2Ftwo"
         ]
         assert not isinstance(vault_app.screen, ModalTaskEditScreen)
+
+
+@pytest.mark.parametrize(("forward", "back"), [("down", "up"), ("j", "k")])
+async def test_keys_move_the_selection_in_a_column_that_overflows(
+    vault_app: KanbanTui, test_vault: Path, forward: str, back: str
+):
+    for index in range(30):
+        write_task_note(
+            test_vault,
+            f"01-Projects/Alpha/tasks/extra-{index}.md",
+            {"status": "pending", "board": "ready"},
+        )
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        first = find_card(vault_app, "two")
+        cards = [c for c in first.parent.children if isinstance(c, TaskCard)]
+        assert first.parent.max_scroll_y > 0
+
+        cards[0].focus()
+        await pilot.pause()
+        await pilot.press(forward)
+        await pilot.pause()
+        assert vault_app.focused is cards[1]
+
+        await pilot.press(back)
+        await pilot.pause()
+        assert vault_app.focused is cards[0]
+
+
+@pytest.mark.parametrize("key", ["left", "right"])
+async def test_side_arrows_change_column_when_a_column_overflows(
+    vault_app: KanbanTui, test_vault: Path, key: str
+):
+    for index in range(30):
+        write_task_note(
+            test_vault,
+            f"01-Projects/Alpha/tasks/extra-{index}.md",
+            {"status": "pending", "board": "ready"},
+        )
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        start = find_card(vault_app, "two")
+        start.focus()
+        await pilot.pause()
+        await pilot.press(key)
+        await pilot.pause()
+        assert vault_app.focused is not start
