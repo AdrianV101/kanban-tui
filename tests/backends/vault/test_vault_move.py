@@ -206,6 +206,47 @@ def test_entering_done_adds_only_the_finished_line(
     assert path.read_bytes().decode() == expected
 
 
+@freeze_time(FROZEN_DAY)
+@pytest.mark.parametrize(
+    "original,column,expected",
+    [
+        (
+            "---\ntype: task\nstatus: done\nfinished: 2026-11-01\n---\nbody\n",
+            1,
+            "---\ntype: task\nstatus: pending\nboard: proposed\n---\nbody\n",
+        ),
+        (
+            "---\ntype: task\nstatus: done\nfinished: 2026-11-01\nboard: doing\n---\nbody\n",
+            3,
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
+        ),
+        (
+            "---\ntype: task\nstatus: done\nfinished: 2026-11-01\n---\nbody\n",
+            6,
+            "---\ntype: task\nstatus: cancelled\n---\nbody\n",
+        ),
+        (
+            "---\r\ntype: task\r\nstatus: done\r\nfinished: 2026-11-01\r\n---\r\nbody\r\n",
+            2,
+            "---\r\ntype: task\r\nstatus: pending\r\nboard: ready\r\n---\r\nbody\r\n",
+        ),
+        (
+            "---\ntype: task\nstatus: pending\nfinished: 2020-01-01\n---\nbody\n",
+            3,
+            "---\ntype: task\nstatus: active\nboard: doing\n---\nbody\n",
+        ),
+    ],
+)
+def test_leaving_done_removes_the_finished_line(
+    test_vault: Path, original: str, column: int, expected: str
+):
+    path = write_raw(test_vault, original)
+
+    move_only_card(make_backend(test_vault), column)
+
+    assert path.read_bytes().decode() == expected
+
+
 @pytest.mark.parametrize(
     "start,old,new,named",
     [

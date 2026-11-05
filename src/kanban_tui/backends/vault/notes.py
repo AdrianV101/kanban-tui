@@ -162,7 +162,8 @@ def with_card_fields(
 
     Quotes, trailing comments, line endings and every other byte are kept. A `board`
     that is not None is replaced, or added as the last frontmatter line; None leaves
-    any `board` line alone. `finished` is handled the same way.
+    any `board` line alone. A `finished` date is written the same way, and None
+    removes any `finished` line, since the date belongs only with `done`.
 
     Raises:
         ValueError: the text has no frontmatter or no `status` line in it.
@@ -213,6 +214,8 @@ def with_card_fields(
         ("finished", FINISHED_LINE, finished.isoformat() if finished else None),
     ):
         if value is None:
+            if name == "finished" and name in found:
+                del lines[found[name]]
             continue
         if name in found:
             replace_value(found[name], pattern, value)
