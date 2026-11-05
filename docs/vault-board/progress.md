@@ -98,6 +98,7 @@ Each ruling ends with what it costs if wrong.
 16. A heading is Markdown heading syntax only, so a tag-first capture such as `#idea buy milk` is still a capture. This corrects ruling 14. Cost: none.
 17. After the jobs host's first checks, the sweep's Claude runs with `--restricted --strict-mcp-config --mcp-config <generated file>`. The host's user settings pre-allowed vault plugin tools, which reached the run despite ruling 9. Restricted mode ignores the settings files but also drops user MCP servers, so the sweep writes a temporary config holding only Granola and Plaud (`vault-board mcp-config` prints it). The owner's settings stay unchanged. Cost: if a server's name or URL drifts from the user's own config, its sign-in isn't reused, and the setup check catches it.
 18. Granola is read for meetings the owner attended only, so teammates' shared notes aren't scanned. Cost: action items for the owner from a meeting they missed are not drafted.
+19. A meeting or recording with no transcript or notes yet isn't a source error, so it makes no failure card. It stays unprocessed and a later run drafts it. Cost: a run only reads from one day before the source's last success, so a recording transcribed after that window has moved past it is never drafted, and nothing reports it.
 
 ## Next
 

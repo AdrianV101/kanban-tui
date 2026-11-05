@@ -274,3 +274,38 @@ def test_missing_npx_raises_agent_error_without_running(
         run_agent(make_request(), CLAUDE, "sonnet", runner)
 
     assert runner.calls == []
+
+
+def test_prompt_does_not_treat_missing_notes_as_a_source_error() -> None:
+    prompt = build_prompt(make_request())
+
+    assert "with no transcript or notes yet is not an error" in prompt
+    assert "When a source itself can't be reached" in prompt
+    assert "When a source can't be read" not in prompt
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "Nothing new today. {reply}",
+        "Using {{braces}} first.\n\n{reply}",
+        "{reply}\n\nThat is everything.",
+        "Done:\n```json\n{reply}\n```",
+    ],
+)
+def test_finds_the_reply_among_other_text(template: str) -> None:
+    result = run_agent(
+        make_request(), CLAUDE, "m", ok(template.format(reply=json.dumps(REPLY)))
+    )
+
+    assert result.examined == REPLY["examined"]
+    assert [draft.source_key for draft in result.drafts] == ["capture:c1"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['I found {"note": "no drafts"} today.', "Set {broken and carry on."],
+)
+def test_text_without_a_reply_object_is_still_an_error(text: str) -> None:
+    with pytest.raises(AgentError, match="not JSON"):
+        run_agent(make_request(), CLAUDE, "m", ok(text))
