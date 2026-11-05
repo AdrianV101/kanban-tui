@@ -443,7 +443,6 @@ async def test_number_keys_move_the_card_to_that_column(
         await pilot.pause()
 
         assert find_card(vault_app, "two").task_.column == column
-        assert vault_app.focused is find_card(vault_app, "two")
         text = (test_vault / "01-Projects/Alpha/tasks/two.md").read_text()
         assert fields in text
 
@@ -480,3 +479,101 @@ async def test_a_refused_number_key_move_is_shown(
 
         assert any(n.title == "Status Update Failed" for n in vault_app._notifications)
         assert find_card(vault_app, "two").task_.column == 2
+
+
+@pytest.mark.parametrize(
+    ("moved_row", "selected_row"),
+    [(0, 0), (1, 1), (3, 2)],
+    ids=["first", "middle", "last"],
+)
+async def test_number_keys_leave_the_selection_in_the_column(
+    vault_app: KanbanTui, test_vault: Path, moved_row: int, selected_row: int
+):
+    write_proposed_notes(test_vault, 4)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        cards = cards_in_column(vault_app, 1)
+        moved_id = cards[moved_row].task_.task_id
+        cards[moved_row].focus()
+        await pilot.pause()
+
+        await pilot.press("2")
+        await pilot.pause()
+
+        remaining = cards_in_column(vault_app, 1)
+        assert len(remaining) == 3
+        assert all(c.task_.task_id != moved_id for c in remaining)
+        assert vault_app.focused is remaining[selected_row]
+
+
+async def test_number_keys_can_work_down_a_column(
+    vault_app: KanbanTui, test_vault: Path
+):
+    write_proposed_notes(test_vault, 3)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        cards_in_column(vault_app, 1)[0].focus()
+        await pilot.pause()
+
+        await pilot.press("2", "3", "5")
+        await pilot.pause()
+
+        assert cards_in_column(vault_app, 1) == []
+        for name, fields in [
+            ("proposed-0", "\nstatus: pending\nboard: ready\n"),
+            ("proposed-1", "\nstatus: active\nboard: doing\n"),
+            ("proposed-2", "\nstatus: done\n"),
+        ]:
+            note = test_vault / f"01-Projects/Alpha/tasks/{name}.md"
+            assert fields in note.read_text()
+
+
+async def test_number_key_on_a_column_s_only_card_selects_the_nearest_column(
+    vault_app: KanbanTui, test_vault: Path
+):
+    write_proposed_notes(test_vault, 1)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "proposed-0")
+
+        await pilot.press("5")
+        await pilot.pause()
+
+        assert vault_app.focused.task_.title == "two"
+
+
+async def test_a_refused_number_key_move_keeps_the_selection(
+    vault_app: KanbanTui, test_vault: Path
+):
+    path = test_vault / "01-Projects/Alpha/tasks/two.md"
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        card = await focus_card(vault_app, pilot, "two")
+        path.write_text(path.read_text().replace("board: ready", "board: proposed"))
+
+        await pilot.press("3")
+        await pilot.pause()
+
+        assert vault_app.focused is card
+
+
+async def test_side_move_keys_still_follow_the_card(
+    vault_app: KanbanTui, test_vault: Path
+):
+    write_proposed_notes(test_vault, 2)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        card = cards_in_column(vault_app, 1)[0]
+        task_id = card.task_.task_id
+        card.focus()
+        await pilot.pause()
+
+        await pilot.press("L")
+        await pilot.pause()
+
+        assert vault_app.focused.task_.task_id == task_id
+        assert vault_app.focused.task_.column == 2

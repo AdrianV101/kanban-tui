@@ -470,6 +470,7 @@ class KanbanBoard(HorizontalScroll):
         # Try the backend update first before modifying local state,
         # so there is nothing to revert on failure.
         original_column = self.selected_task.column
+        original_row = event.taskcard.row if event else 0
         self.selected_task.column = target_column
         target_position = (
             self.drag_target_position
@@ -531,8 +532,11 @@ class KanbanBoard(HorizontalScroll):
                 task_card.task_ = updated_task
                 task_card.refresh(recompose=True)
 
-        # Restore focus to the moved task
-        self.query_one(f"#taskcard_{moved_task_id}", TaskCard).focus()
+        if event and event.keep_selection:
+            self._select_near_removed_card(original_column, original_row)
+        else:
+            # Restore focus to the moved task
+            self.query_one(f"#taskcard_{moved_task_id}", TaskCard).focus()
 
         self.target_column = None
         self.app.app_focus = True
@@ -563,7 +567,12 @@ class KanbanBoard(HorizontalScroll):
 
         if not self.app.visible_task_list:
             self.get_first_card()
-        elif column.task_amount:
+        else:
+            self._select_near_removed_card(column_id, row_idx)
+
+    def _select_near_removed_card(self, column_id: int, row_idx: int) -> None:
+        column = self.query_one(f"#column_{column_id}", Column)
+        if column.task_amount:
             column.query(TaskCard)[min(row_idx, column.task_amount - 1)].focus()
         else:
             self._focus_nearest_column_with_cards(column_id, 1, row_idx)

@@ -501,5 +501,11 @@ async def test_number_keys_count_only_visible_columns(test_app: KanbanTui):
 
         await pilot.press("2")
         await pilot.pause()
-        assert pilot.app.focused.task_.title == "Task_ready_0"
-        assert pilot.app.focused.task_.column == visible[1]
+        moved = next(
+            card
+            for card in pilot.app.screen.query(TaskCard)
+            if card.task_.title == "Task_ready_0"
+        )
+        assert moved.task_.column == visible[1]
+        assert pilot.app.focused.task_.title == "Task_ready_1"
+        assert pilot.app.focused.task_.column == visible[0]

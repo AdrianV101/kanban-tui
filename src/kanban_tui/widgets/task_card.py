@@ -96,9 +96,12 @@ class TaskCard(Vertical):
             return self.taskcard
 
     class Moved(Message):
-        def __init__(self, taskcard: TaskCard, new_column: int) -> None:
+        def __init__(
+            self, taskcard: TaskCard, new_column: int, keep_selection: bool = False
+        ) -> None:
             self.taskcard = taskcard
             self.new_column = new_column
+            self.keep_selection = keep_selection
             super().__init__()
 
         @property
@@ -207,7 +210,9 @@ class TaskCard(Vertical):
         if new_column_id == self.task_.column:
             return
         self.update_task_status_on_move(new_column_id)
-        self.post_message(self.Moved(taskcard=self, new_column=new_column_id))
+        self.post_message(
+            self.Moved(taskcard=self, new_column=new_column_id, keep_selection=True)
+        )
 
     def action_move_task_position(self, direction: Literal["up", "down"]):
         if self.app.config.backend.mode != Backends.SQLITE:
