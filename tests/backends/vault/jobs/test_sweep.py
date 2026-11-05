@@ -138,7 +138,7 @@ def test_rerun_creates_nothing_and_sends_processed_meetings(
 
     assert report.created == [] and report.ok
     assert agent.requests[0].processed == ["granola:m1"]
-    assert agent.requests[0].since["granola"] == date(2026, 11, 3)
+    assert agent.requests[0].since["granola"] == date(2026, 10, 28)
     assert titles(backend).count("Send the quote") == 1
 
 

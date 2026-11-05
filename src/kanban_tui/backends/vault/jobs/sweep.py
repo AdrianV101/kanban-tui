@@ -32,6 +32,8 @@ PROPOSED_COLUMN = 1
 GENERAL_TITLE = "Capture sweep failed"
 CAPTURE_TITLE = "Capture sweep: Capture.md failed"
 CAPTURE_PREFIX = "capture:"
+# Stays under MEETING_KEEP_DAYS, so meetings in the window are still known as processed.
+LOOKBACK_DAYS = 7
 
 
 @dataclass
@@ -194,7 +196,9 @@ def _remove_written(
 
 def _since(state: SweepState, source: str, today: date) -> date:
     try:
-        return date.fromisoformat(state.last_success[source]) - timedelta(days=1)
+        return date.fromisoformat(state.last_success[source]) - timedelta(
+            days=LOOKBACK_DAYS
+        )
     except (KeyError, ValueError):
         return today - timedelta(days=2)
 
