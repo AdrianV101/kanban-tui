@@ -79,6 +79,7 @@ Today is {request.today.isoformat()}.
 Rules:
 - Every capture item below gets exactly one draft, with source_key "capture:<id>".
 - Meeting drafts are action items for {owner} only, with source_key "granola:<meeting id>" or "plaud:<file id>" and the meeting's URL or link in "link". Capture drafts have an empty "link".
+- Each action item gets its own draft. Never combine several action items in one draft.
 - Only read meetings {owner} attended. In Granola, search with attended_only set to true. Skip a teammate's shared notes of a meeting {owner} wasn't in.
 - List a meeting in "examined" (bare id, no prefix) only when its notes were available to you.
 - Skip every meeting whose key is in the processed list below.

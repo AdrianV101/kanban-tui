@@ -235,6 +235,7 @@ def test_prompt_carries_inputs_and_rules() -> None:
         "granola:old1",
         "plaud:old2",
         "exactly one draft",
+        "Each action item gets its own draft",
         "action items for Alex only",
         "Only read meetings Alex attended",
         "only when its notes were available",
