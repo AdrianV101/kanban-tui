@@ -211,7 +211,10 @@ async def test_edit_opens_the_note_in_obsidian(
     vault_app: KanbanTui, monkeypatch, trigger: str
 ):
     opened: list[str] = []
-    monkeypatch.setattr("webbrowser.open", lambda url, *a, **k: opened.append(url))
+    monkeypatch.setattr(
+        "kanban_tui.widgets.task_card.open_note",
+        lambda app, url: opened.append(url),
+    )
     async with vault_app.run_test(size=APP_SIZE) as pilot:
         await pilot.pause()
         card = await focus_card(vault_app, pilot, "two")

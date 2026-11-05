@@ -17,6 +17,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Label, Markdown
 
+from kanban_tui.backends.vault.open_note import open_note
 from kanban_tui.classes.task import Task
 from kanban_tui.modal.modal_confirm_screen import ModalConfirmScreen
 from kanban_tui.modal.modal_task_screen import ModalTaskEditScreen
@@ -293,7 +294,7 @@ class TaskCard(Vertical):
     @on(Click)
     def action_edit_task(self) -> None:
         if self.app.config.backend.mode == Backends.VAULT:
-            self.app.open_url(self.app.backend.note_url(self.task_))
+            open_note(self.app, self.app.backend.note_url(self.task_))
             return
         self.app.push_screen(
             ModalTaskEditScreen(task=self.task_), callback=self.from_modal_update_task
