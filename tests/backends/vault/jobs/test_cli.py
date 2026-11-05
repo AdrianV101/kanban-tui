@@ -1,6 +1,8 @@
+import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from kanban_tui.backends.vault.jobs import cli
@@ -8,6 +10,12 @@ from kanban_tui.backends.vault.jobs.cli import main
 from tests.conftest import write_task_note
 
 CAPTURE = "00-Inbox/Capture.md"
+NPX = "/opt/node/bin/npx"
+
+
+@pytest.fixture(autouse=True)
+def fake_npx(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("shutil.which", lambda name: NPX if name == "npx" else None)
 
 
 def make_config(tmp_path: Path, vault: Path) -> Path:
@@ -106,3 +114,19 @@ def test_missing_vault_folder_exits_two(tmp_path: Path):
     result = CliRunner().invoke(main, ["sweep", "--config", str(config)])
     assert result.exit_code == 2
     assert "no-vault" in result.stderr
+
+
+def test_mcp_config_prints_the_sweep_servers():
+    result = invoke(["mcp-config"])
+    assert result.exit_code == 0, result.output
+    config = json.loads(result.output)
+    assert sorted(config["mcpServers"]) == ["granola", "plaud"]
+    assert config["mcpServers"]["plaud"]["command"] == NPX
+
+
+def test_mcp_config_without_npx_exits_one(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    result = CliRunner().invoke(main, ["mcp-config"])
+    assert result.exit_code == 1
+    assert "npx" in result.stderr
+    assert result.stdout == ""

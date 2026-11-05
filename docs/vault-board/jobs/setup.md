@@ -30,23 +30,31 @@ The Mac needs the Obsidian vault folder synced locally, `uv`, Node (for `npx`), 
    claude mcp add -s user plaud -- "$(command -v npx)" -y @plaud-ai/mcp@latest
    ```
 
-4. Check headless access. This uses the same restriction flags as the sweep. Replace `<list>` with the comma-separated tool names in `ALLOWED_TOOLS` in `src/kanban_tui/backends/vault/jobs/sweep_agent.py`:
-
-   ```bash
-   claude -p "List my three most recent Granola meetings and my three most recent Plaud files by title." --restricted --tools "" --permission-mode dontAsk --allowedTools "<list>"
-   ```
-
-   The reply must show titles from both. If it reports a tool as denied or missing, run `claude mcp list`, find the real tool names the two servers expose, and correct `ALLOWED_TOOLS` in `sweep_agent.py` (and its test) to match.
-5. Check that the run sees only Granola and Plaud. `--restricted` ignores the user, project and local settings files, so their allow rules and the plugins they enable don't reach the sweep. Run the same flags with this prompt: "List every tool you have whose name starts with mcp__, one per line, nothing else." The list must hold only `mcp__granola__` and `mcp__plaud__` tools. If any other MCP tool appears (for example a vault plugin's), stop and tell the owner: the sweep must not run until it's gone. Leave `~/.claude/settings.json` as it is; the owner's other sessions rely on it.
-
-## Part B: install and run
-
-1. Install the command:
+4. Install the command:
 
    ```bash
    uv tool install --force "kanban-tui[vault] @ git+https://github.com/AdrianV101/kanban-tui@vault-backend"
    ```
 
+5. Check headless access with exactly the sweep's restrictions. `vault-board mcp-config` prints the only MCP servers the sweep loads. Replace `<list>` with the comma-separated tool names in `ALLOWED_TOOLS` in `src/kanban_tui/backends/vault/jobs/sweep_agent.py`:
+
+   ```bash
+   vault-board mcp-config > "$TMPDIR/sweep-mcp.json"
+   FLAGS=(--restricted --strict-mcp-config --mcp-config "$TMPDIR/sweep-mcp.json" --tools "" --permission-mode dontAsk --allowedTools "<list>")
+   cd "$(mktemp -d)"
+   claude -p "List my three most recent Granola meetings and my three most recent Plaud files by title." "${FLAGS[@]}"
+   ```
+
+   The reply must show titles from both. If it reports a tool as denied or missing, run `claude mcp list`, find the real tool names the two servers expose, and correct `ALLOWED_TOOLS` in `sweep_agent.py` (and its test) to match.
+6. Check the run sees only Granola and Plaud, and refuses tools outside the list. With the same `FLAGS`:
+   - `claude -p "List every tool you have whose name starts with mcp__, one per line, nothing else." "${FLAGS[@]}"` lists only `mcp__granola__` and `mcp__plaud__` tools.
+   - `claude -p "Call mcp__plaud__get_current_user and say whether it worked." --output-format json "${FLAGS[@]}"` must fail, with the tool in `permission_denials`. It only reads, but it isn't on the list.
+
+   If another MCP tool appears, or the call goes through, stop and tell the owner. The sweep must not run until that's fixed. Leave `~/.claude/settings.json` as it is; the owner's other sessions rely on it.
+
+## Part B: install and run
+
+1. If the `vault-backend` branch moved since Part A, rerun the install command from Part A step 4 and `git pull` in the checkout.
 2. Write the config. Copy `docs/vault-board/jobs/jobs.example.toml` to `~/.config/vault-board/jobs.toml` and fill in the vault path, the owner's name, and one `gh_accounts` line per PR owner. Ask the owner for these values.
 3. Make a scratch copy of the vault's task notes:
    - `01-Projects/*/tasks/`

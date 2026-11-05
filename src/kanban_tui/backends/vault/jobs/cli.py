@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from pathlib import Path
 
@@ -17,9 +18,11 @@ from kanban_tui.backends.vault.jobs.pr_check import check_prs
 from kanban_tui.backends.vault.jobs.runner import run_command
 from kanban_tui.backends.vault.jobs.sweep import run_sweep
 from kanban_tui.backends.vault.jobs.sweep_agent import (
+    AgentError,
     AgentResult,
     SweepRequest,
     run_agent,
+    sweep_mcp_config,
 )
 from kanban_tui.config import VaultBackendSettings
 
@@ -94,3 +97,14 @@ def sweep(config_path: Path) -> None:
         click.echo(f"error: {title}: {text}")
     click.echo(f"sweep: {len(report.created)} drafts, {len(report.errors)} errors")
     raise SystemExit(0 if report.ok else 1)
+
+
+@main.command("mcp-config")
+def mcp_config() -> None:
+    """Print the MCP config the sweep's Claude run uses."""
+    try:
+        config = sweep_mcp_config()
+    except AgentError as error:
+        click.echo(str(error), err=True)
+        raise SystemExit(1) from None
+    click.echo(json.dumps(config, indent=2))

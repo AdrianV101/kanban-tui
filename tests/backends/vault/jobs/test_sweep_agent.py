@@ -14,9 +14,28 @@ from kanban_tui.backends.vault.jobs.sweep_agent import (
     SweepRequest,
     build_prompt,
     run_agent,
+    sweep_mcp_config,
 )
 
 CLAUDE = Path("/opt/bin/claude")
+NPX = "/opt/node/bin/npx"
+MCP_CONFIG = {
+    "mcpServers": {
+        "granola": {"type": "http", "url": "https://mcp.granola.ai/mcp"},
+        "plaud": {
+            "type": "stdio",
+            "command": NPX,
+            "args": ["-y", "@plaud-ai/mcp@latest"],
+        },
+    }
+}
+
+
+@pytest.fixture(autouse=True)
+def fake_npx(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("shutil.which", lambda name: NPX if name == "npx" else None)
+
+
 REPLY = {
     "drafts": [
         {
@@ -71,8 +90,17 @@ def ok(result: str) -> FakeRunner:
 def test_command_is_exactly_the_pinned_argv() -> None:
     request = make_request()
     runner = ok(json.dumps(REPLY))
+    seen: dict[str, object] = {}
 
-    run_agent(request, CLAUDE, "sonnet", runner, timeout_s=77)
+    def reading_runner(
+        argv: list[str], env: dict[str, str], timeout: float
+    ) -> tuple[int, str, str]:
+        config_path = Path(argv[argv.index("--mcp-config") + 1])
+        seen["path"] = config_path
+        seen["config"] = json.loads(config_path.read_text(encoding="utf-8"))
+        return runner(argv, env, timeout)
+
+    run_agent(request, CLAUDE, "sonnet", reading_runner, timeout_s=77)
 
     [(argv, env, timeout)] = runner.calls
     assert argv == [
@@ -84,6 +112,9 @@ def test_command_is_exactly_the_pinned_argv() -> None:
         "--model",
         "sonnet",
         "--restricted",
+        "--strict-mcp-config",
+        "--mcp-config",
+        str(seen["path"]),
         "--tools",
         "",
         "--permission-mode",
@@ -93,6 +124,8 @@ def test_command_is_exactly_the_pinned_argv() -> None:
     ]
     assert env == {}
     assert timeout == 77
+    assert seen["config"] == MCP_CONFIG
+    assert not Path(str(seen["path"])).exists()
     assert ALLOWED_TOOLS == (
         "mcp__granola__list_meetings",
         "mcp__granola__search_meetings",
@@ -225,3 +258,19 @@ def test_unrunnable_claude_raises_agent_error() -> None:
         run_agent(make_request(), CLAUDE, "m", runner)
 
     assert "\n" not in str(raised.value)
+
+
+def test_mcp_config_holds_only_granola_and_plaud() -> None:
+    assert sweep_mcp_config() == MCP_CONFIG
+
+
+def test_missing_npx_raises_agent_error_without_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    runner = ok(json.dumps(REPLY))
+
+    with pytest.raises(AgentError, match="npx"):
+        run_agent(make_request(), CLAUDE, "sonnet", runner)
+
+    assert runner.calls == []

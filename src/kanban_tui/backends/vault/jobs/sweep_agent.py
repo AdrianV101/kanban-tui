@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
@@ -24,6 +26,8 @@ ALLOWED_TOOLS = (
     "mcp__plaud__get_transcript",
 )
 SOURCES = ("granola", "plaud")
+GRANOLA_URL = "https://mcp.granola.ai/mcp"
+PLAUD_PACKAGE = "@plaud-ai/mcp@latest"
 _FENCE = re.compile(r"^```(?:json)?\s*\n(.*?)\n?```\s*$", re.DOTALL)
 
 REPLY_FORMAT = """{"drafts": [{"source_key": "capture:<id> | granola:<meeting id> | plaud:<file id>", "title": "...", "project": "...", "context": "...", "link": "..."}], "examined": {"granola": ["<meeting id>"], "plaud": ["<file id>"]}, "errors": {"granola": null, "plaud": null}}"""
@@ -100,6 +104,27 @@ Reply format:
 """
 
 
+def sweep_mcp_config() -> dict[str, Any]:
+    """The only MCP servers the sweep's Claude run loads.
+
+    The names must match the `mcp__<server>__` prefixes in ALLOWED_TOOLS, and
+    match the servers' names in the user's Claude config so their sign-ins are
+    reused.
+
+    Raises:
+        AgentError: `npx`, which starts the Plaud server, is not on PATH.
+    """
+    npx = shutil.which("npx")
+    if npx is None:
+        raise AgentError("cannot find npx, which the Plaud server needs, on PATH")
+    return {
+        "mcpServers": {
+            "granola": {"type": "http", "url": GRANOLA_URL},
+            "plaud": {"type": "stdio", "command": npx, "args": ["-y", PLAUD_PACKAGE]},
+        }
+    }
+
+
 def run_agent(
     request: SweepRequest,
     claude_path: Path,
@@ -107,24 +132,37 @@ def run_agent(
     run: Runner,
     timeout_s: int = 900,
 ) -> AgentResult:
-    argv = [
-        str(claude_path),
-        "-p",
-        build_prompt(request),
-        "--output-format",
-        "json",
-        "--model",
-        model,
-        # Ignores the user's settings files, whose allow rules and plugins
-        # would otherwise hand this run tools beyond the read-only list.
-        "--restricted",
-        "--tools",
-        "",
-        "--permission-mode",
-        "dontAsk",
-        "--allowedTools",
-        ",".join(ALLOWED_TOOLS),
-    ]
+    mcp_config = sweep_mcp_config()
+    with tempfile.TemporaryDirectory(prefix="vault-board-") as folder:
+        config_path = Path(folder) / "sweep-mcp.json"
+        config_path.write_text(json.dumps(mcp_config), encoding="utf-8")
+        argv = [
+            str(claude_path),
+            "-p",
+            build_prompt(request),
+            "--output-format",
+            "json",
+            "--model",
+            model,
+            # Restricted mode drops the user's allow rules and plugins, and
+            # also their MCP servers, so the two needed ones come from here.
+            "--restricted",
+            "--strict-mcp-config",
+            "--mcp-config",
+            str(config_path),
+            "--tools",
+            "",
+            "--permission-mode",
+            "dontAsk",
+            "--allowedTools",
+            ",".join(ALLOWED_TOOLS),
+        ]
+        return _run_claude(argv, claude_path, run, timeout_s)
+
+
+def _run_claude(
+    argv: list[str], claude_path: Path, run: Runner, timeout_s: int
+) -> AgentResult:
     try:
         code, stdout, stderr = run(argv, {}, timeout_s)
     except subprocess.TimeoutExpired:
