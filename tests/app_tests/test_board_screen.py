@@ -187,11 +187,11 @@ async def test_kanbanboard_movement(test_app: KanbanTui):
         assert pilot.app.focused.task_.column == 3
         assert pilot.app.focused.row == 0
 
-        # move left skip done column
+        # move left skip doing column, keeping the row
         await pilot.press("h")
-        assert pilot.app.focused.task_.title == "Task_ready_2"
+        assert pilot.app.focused.task_.title == "Task_ready_0"
         assert pilot.app.focused.task_.column == 1
-        assert pilot.app.focused.row == 2
+        assert pilot.app.focused.row == 0
 
 
 async def test_kanbanboard_card_movement_adjacent(test_app: KanbanTui):

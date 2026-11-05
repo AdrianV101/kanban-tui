@@ -238,47 +238,19 @@ class KanbanBoard(HorizontalScroll):
                     case _:
                         self.app.action_focus_next()
             case "right":
-                column_id_list = list(self.app.visible_column_dict.keys())
-                column_index = column_id_list.index(self.selected_task.column)
-                new_column_index = (column_index + 1) % len(
-                    self.app.visible_column_dict
-                )
-                new_column_id = column_id_list[new_column_index]
-                new_column_tasks = self.query_one(
-                    f"#column_{new_column_id}", Column
-                ).task_amount
-                match new_column_tasks:
-                    case 0:
-                        self.app.action_focus_next()
-                    case new_column_tasks if new_column_tasks <= row_idx:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[new_column_tasks - 1].focus()
-                    case _:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[row_idx].focus()
+                self._focus_nearest_column_with_cards(1, row_idx)
             case "left":
-                column_id_list = list(self.app.visible_column_dict.keys())
-                column_index = column_id_list.index(self.selected_task.column)
-                new_column_index = (
-                    column_index + len(self.app.visible_column_dict) - 1
-                ) % len(self.app.visible_column_dict)
-                new_column_id = column_id_list[new_column_index]
-                new_column_tasks = self.query_one(
-                    f"#column_{new_column_id}", Column
-                ).task_amount
-                match new_column_tasks:
-                    case 0:
-                        self.app.action_focus_previous()
-                    case new_column_tasks if new_column_tasks <= row_idx:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[new_column_tasks - 1].focus()
-                    case _:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[row_idx].focus()
+                self._focus_nearest_column_with_cards(-1, row_idx)
+
+    def _focus_nearest_column_with_cards(self, step: int, row_idx: int) -> None:
+        column_ids = list(self.app.visible_column_dict.keys())
+        start = column_ids.index(self.selected_task.column)
+        for offset in range(1, len(column_ids)):
+            column_id = column_ids[(start + step * offset) % len(column_ids)]
+            column = self.query_one(f"#column_{column_id}", Column)
+            if column.task_amount:
+                column.query(TaskCard)[min(row_idx, column.task_amount - 1)].focus()
+                return
 
     @on(TaskCard.Focused)
     def get_current_card_position(self, event: TaskCard.Focused):

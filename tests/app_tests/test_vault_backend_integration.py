@@ -278,3 +278,57 @@ async def test_side_arrows_change_column_when_a_column_overflows(
         await pilot.press(key)
         await pilot.pause()
         assert vault_app.focused is not start
+
+
+async def test_right_skips_empty_columns(vault_app: KanbanTui, test_vault: Path):
+    write_task_note(
+        test_vault, "01-Projects/Alpha/tasks/three.md", {"status": "active"}
+    )
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "one")
+        await pilot.press("right")
+        await pilot.pause()
+
+        assert vault_app.focused.task_.title == "two"
+
+
+async def test_left_skips_empty_columns_and_keeps_the_row_in_range(
+    vault_app: KanbanTui, test_vault: Path
+):
+    write_task_note(
+        test_vault,
+        "01-Projects/Alpha/tasks/four.md",
+        {"status": "pending", "board": "ready"},
+    )
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        ready = find_card(vault_app, "two").parent
+        lower = [c for c in ready.children if isinstance(c, TaskCard)][1]
+        lower.focus()
+        await pilot.pause()
+        await pilot.press("left")
+        await pilot.pause()
+
+        assert vault_app.focused.task_.title == "one"
+
+
+@pytest.mark.parametrize("key", ["left", "right"])
+async def test_side_keys_stay_put_when_every_other_column_is_empty(
+    vault_app: KanbanTui, test_vault: Path, key: str
+):
+    write_task_note(
+        test_vault,
+        "01-Projects/Alpha/tasks/one.md",
+        {"status": "pending", "board": "ready"},
+    )
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        card = await focus_card(vault_app, pilot, "two")
+        await pilot.press(key)
+        await pilot.pause()
+
+        assert vault_app.focused is card
