@@ -6,7 +6,7 @@ import pytest
 from kanban_tui.backends.vault.backend import VaultBackend
 from kanban_tui.backends.vault.jobs.github import GhPrStates, PrFetchError, PrState
 from kanban_tui.backends.vault.jobs.pr_check import check_prs
-from kanban_tui.config import VaultBackendSettings
+from kanban_tui.config import VaultBackendSettings, VaultBoard
 from tests.conftest import write_task_note
 
 TODAY = date.today()
@@ -125,6 +125,23 @@ def test_only_in_review_cards_are_checked_and_shared_urls_fetched_once(
 
     assert fetch.calls == [url(1)]
     assert sorted(report.done) == sorted([NOTE, OTHER])
+
+
+def test_in_review_cards_off_the_active_board_are_still_checked(test_vault: Path):
+    acme_note = "01-Projects/Acme/tasks/card.md"
+    in_review(test_vault, NOTE, [url(1)])
+    in_review(test_vault, acme_note, [url(2)])
+    backend = VaultBackend(
+        VaultBackendSettings(
+            vault_path=test_vault.as_posix(),
+            boards=[VaultBoard(name="Personal", exclude_projects=["Acme"])],
+            active_board="Personal",
+        )
+    )
+
+    report = check_prs(backend, FakeFetch({url(1): "MERGED", url(2): "MERGED"}), TODAY)
+
+    assert sorted(report.done) == sorted([NOTE, acme_note])
 
 
 @pytest.mark.parametrize(

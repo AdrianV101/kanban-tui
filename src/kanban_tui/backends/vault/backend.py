@@ -23,7 +23,7 @@ from kanban_tui.classes.board import Board
 from kanban_tui.classes.category import Category
 from kanban_tui.classes.column import Column
 from kanban_tui.classes.task import Task
-from kanban_tui.config import TaskAppendModes, VaultBackendSettings
+from kanban_tui.config import TaskAppendModes, VaultBackendSettings, VaultBoard
 
 KNOWN_STATUSES = frozenset({"pending", "active", "done", "cancelled"})
 COLUMN_FIELDS: dict[int, tuple[str, str | None]] = {
@@ -88,6 +88,7 @@ CATEGORY_PALETTE = [
 ]
 BOARD_ID = 1
 BOARD_NAME = "Vault"
+BOARD_ICON = "🗃️"
 TEMPLATE_PATH = "05-Templates/task.md"
 INBOX_FOLDER = "00-Inbox"
 
@@ -98,7 +99,7 @@ class VaultWriteError(Exception):
 
 @dataclass
 class VaultBackend(Backend):
-    """Shows an Obsidian vault's task notes as one board."""
+    """Shows an Obsidian vault's task notes as boards filtered by project."""
 
     settings: VaultBackendSettings
 
@@ -115,25 +116,60 @@ class VaultBackend(Backend):
     # === Board Management ===
 
     def get_boards(self) -> list[Board]:
+        """The all-cards board as id 1, then each configured board in order."""
         try:
             created = datetime.fromtimestamp(self._vault_root.stat().st_ctime)
         except OSError:
             created = datetime.now()
+        names = [BOARD_NAME] + [board.name for board in self.settings.boards]
         return [
             Board(
-                board_id=BOARD_ID,
-                name=BOARD_NAME,
-                icon="🗃️",
+                board_id=board_id,
+                name=name,
+                icon=BOARD_ICON,
                 creation_date=created,
                 reset_column=2,
                 start_column=3,
                 finish_column=DONE_COLUMN,
             )
+            for board_id, name in enumerate(names, start=BOARD_ID)
         ]
 
     @property
     def active_board(self) -> Board:
-        return self.get_boards()[0]
+        """The board `settings.active_board` names, or the all-cards board."""
+        boards = self.get_boards()
+        for board in boards[1:]:
+            if board.name == self.settings.active_board:
+                return board
+        return boards[0]
+
+    def _board_config(self, board_id: int) -> VaultBoard | None:
+        index = board_id - BOARD_ID - 1
+        if 0 <= index < len(self.settings.boards):
+            return self.settings.boards[index]
+        return None
+
+    def _shows(self, board: VaultBoard | None, category: int | None) -> bool:
+        if board is None:
+            return True
+        name = self._category_name(category) or self.settings.personal_category
+        included = {project.lower() for project in board.projects}
+        excluded = {project.lower() for project in board.exclude_projects}
+        if included and name.lower() not in included:
+            return False
+        return name.lower() not in excluded
+
+    def _category_name(self, category: int | None) -> str | None:
+        return next(
+            (name for name, number in self._category_ids.items() if number == category),
+            None,
+        )
+
+    def board_shows_personal(self) -> bool:
+        """Whether the active board shows cards with no project, which live in the inbox."""
+        board = self._board_config(self.active_board.board_id)
+        return self._shows(board, None)
 
     # === Column Management ===
 
@@ -271,6 +307,11 @@ class VaultBackend(Backend):
             task.position = positions.get(task.column, 0)
             positions[task.column] = task.position + 1
 
+        active = self.settings.active_board
+        if active and active not in {board.name for board in self.settings.boards}:
+            warnings.append(
+                f"board {active!r} is not in the config, showing every card"
+            )
         self._tasks = [task for task, _ in entries]
         self._warnings = warnings
         self._has_scanned = True
@@ -289,11 +330,19 @@ class VaultBackend(Backend):
     # === Task Management ===
 
     def get_tasks_on_active_board(self) -> list[Task]:
-        return self.get_tasks_by_board(BOARD_ID)
+        return self.get_tasks_by_board(self.active_board.board_id)
 
     def get_tasks_by_board(self, board_id: int) -> list[Task]:
+        """Rescan the vault and return the cards board `board_id` shows.
+
+        Board id 1, and any id with no configured board, gives every card.
+        """
         self._scan()
-        return list(self._tasks)
+        return self._tasks_on(board_id)
+
+    def _tasks_on(self, board_id: int) -> list[Task]:
+        board = self._board_config(board_id)
+        return [task for task in self._tasks if self._shows(board, task.category)]
 
     def _scanned_tasks(self) -> list[Task]:
         if not self._has_scanned:
@@ -542,6 +591,15 @@ class VaultBackend(Backend):
             for name, category_id in self._category_ids.items()
         ]
 
+    def get_board_categories(self) -> list[Category]:
+        """The categories the active board shows, for filing new cards."""
+        board = self._board_config(self.active_board.board_id)
+        return [
+            category
+            for category in self.get_all_categories()
+            if self._shows(board, category.category_id)
+        ]
+
     def get_category_by_id(self, category_id: int) -> Category:
         for category in self.get_all_categories():
             if category.category_id == category_id:
@@ -549,16 +607,17 @@ class VaultBackend(Backend):
         raise KeyError(f"No category with id {category_id}")
 
     def get_board_infos(self):
-        board = self.active_board
+        self._scan()
         return [
             {
                 "board_id": board.board_id,
                 "name": board.name,
                 "icon": board.icon,
-                "amount_tasks": len(self.get_tasks_by_board(board.board_id)),
+                "amount_tasks": len(self._tasks_on(board.board_id)),
                 "amount_columns": len(self.get_columns()),
                 "next_due": None,
             }
+            for board in self.get_boards()
         ]
 
     # === Not Supported Yet ===
@@ -569,13 +628,13 @@ class VaultBackend(Backend):
         icon: str | None = None,
         column_dict: dict[str, bool] | None = None,
     ) -> Board:
-        raise NotImplementedError("Vault backend has a single fixed board.")
+        raise NotImplementedError("Vault boards are set in the config file.")
 
     def delete_board(self, board_id: int):
-        raise NotImplementedError("Vault backend has a single fixed board.")
+        raise NotImplementedError("Vault boards are set in the config file.")
 
     def update_board(self, board_id: int, name: str, icon: str):
-        raise NotImplementedError("Vault backend has a single fixed board.")
+        raise NotImplementedError("Vault boards are set in the config file.")
 
     def create_new_category(self, name: str, color: str) -> Category:
         raise NotImplementedError("Vault backend derives categories from projects.")

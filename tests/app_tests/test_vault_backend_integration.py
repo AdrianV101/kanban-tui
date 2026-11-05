@@ -7,7 +7,8 @@ import pytest
 from textual.widgets import Button, Input, Label, Select
 
 from kanban_tui.app import KanbanTui
-from kanban_tui.config import Backends
+from kanban_tui.config import Backends, Settings, VaultBoard
+from kanban_tui.modal.modal_board_screen import ModalBoardOverviewScreen
 from kanban_tui.modal.modal_confirm_screen import ModalConfirmScreen
 from kanban_tui.modal.modal_task_screen import ModalTaskEditScreen
 from kanban_tui.widgets.modal_task_widgets import CategorySelector
@@ -577,3 +578,95 @@ async def test_side_move_keys_still_follow_the_card(
 
         assert vault_app.focused.task_.task_id == task_id
         assert vault_app.focused.task_.column == 2
+
+
+def use_boards(app: KanbanTui, test_vault: Path, active_board: str = "") -> None:
+    write_task_note(test_vault, "01-Projects/Acme/tasks/acme-card.md")
+    settings = app.config.backend.vault_settings
+    settings.boards = [
+        VaultBoard(name="Work", projects=["Acme"]),
+        VaultBoard(name="Personal", exclude_projects=["Acme"]),
+        VaultBoard(name="Garden", projects=["Garden"]),
+    ]
+    settings.active_board = active_board
+
+
+@pytest.mark.parametrize(
+    "active_board,keys,shown,saved",
+    [
+        ("", ["down"], {"acme-card"}, "Work"),
+        ("", ["down", "down"], {"one", "two"}, "Personal"),
+        ("Work", ["up"], {"one", "two", "acme-card"}, ""),
+    ],
+)
+async def test_picking_a_board_shows_only_its_cards_and_saves_its_name(
+    vault_app: KanbanTui,
+    test_vault: Path,
+    active_board: str,
+    keys: list[str],
+    shown: set[str],
+    saved: str,
+):
+    use_boards(vault_app, test_vault, active_board)
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+
+        await pilot.press("B")
+        await pilot.press(*keys, "enter")
+        await pilot.pause()
+
+        assert {card.task_.title for card in vault_app.screen.query(TaskCard)} == shown
+        assert Settings().backend.vault_settings.active_board == saved
+
+
+@pytest.mark.parametrize(
+    "active_board,offered,starts_on",
+    [
+        ("Work", {"Acme"}, "Acme"),
+        ("Personal", {"Alpha"}, None),
+        ("Garden", set(), None),
+    ],
+)
+async def test_the_new_card_form_offers_only_the_boards_projects(
+    vault_app: KanbanTui,
+    test_vault: Path,
+    active_board: str,
+    offered: set[str],
+    starts_on: str | None,
+):
+    use_boards(vault_app, test_vault, active_board)
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+
+        await pilot.press("n")
+        await pilot.pause()
+
+        selector = vault_app.screen.query_one(CategorySelector)
+        backend = vault_app.backend
+        names = {
+            backend.get_category_by_id(value).name
+            for _, value in selector._options
+            if isinstance(value, int)
+        }
+        assert names == offered
+        if starts_on is None:
+            assert selector.is_blank()
+        else:
+            assert backend.get_category_by_id(selector.value).name == starts_on
+
+
+@pytest.mark.parametrize("key", ["n", "e", "c", "d"])
+async def test_the_board_picker_cannot_add_change_or_remove_vault_boards(
+    vault_app: KanbanTui, test_vault: Path, key: str
+):
+    use_boards(vault_app, test_vault)
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+
+        await pilot.press("B", "down", key)
+        await pilot.pause()
+
+        assert isinstance(vault_app.screen, ModalBoardOverviewScreen)
+        assert not vault_app.screen.query("#btn_create_board")
+        names = [board.name for board in vault_app.backend.get_boards()]
+        assert names == ["Vault", "Work", "Personal", "Garden"]

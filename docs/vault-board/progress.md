@@ -103,6 +103,19 @@ Each ruling ends with what it costs if wrong.
 21. The sweep reads from seven days before each source's last success, not one, so a recording transcribed within a week is still drafted. Processed meetings are remembered for 14 days, so a wider window doesn't draft them twice. This narrows ruling 19's cost. Cost: a recording transcribed more than a week late is still missed without a report.
 22. The prompt asks for one draft per action item, so the card count no longer varies between runs over the same meetings. Cost: a meeting with many small items makes many cards.
 
+## Boards by project (done, 2026-11-05)
+
+Each machine's config can name boards that show some projects, such as Work for one project and Personal for the rest. The picker (`B`) switches between them and the choice is saved per machine. See the README's "Boards by project".
+
+### Rulings
+
+1. The all-cards board stays first as "Vault". An empty `active_board` shows it. An unknown name shows it with a warning. Cost: a misspelt name shows every card until it is fixed.
+2. The active board is saved when you pick one, not at launch, so a misspelt name keeps its warning. Cost: none.
+3. A card with no project counts as the personal category for board rules. Cost: none.
+4. On a board that hides the personal category, the new-card form has no No Category option, unless the board has no known projects yet. Then No Category stays so the form can open. Cost: a card made there lands in `00-Inbox`, off the board.
+5. The PR check reads every card, whatever board is active. Cost: none.
+6. The picker's new, edit, copy and delete are off in vault mode only. Edit crashes the same way in claude mode, which is left alone. Cost: the claude-mode crash stays.
+
 ## Next
 
 - Mac setup (Part A sign-ins, then Part B install, scratch run, go live and schedules), following [jobs/setup.md](jobs/setup.md).

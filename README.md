@@ -45,7 +45,7 @@ kanban-tui currently supports four backends.
 Columns are defined by task transitions.
 - **claude** | Read the `.json` files under `~/.claude/tasks/`. Boards are created for each session ID.
 Supports only a subset of features
-- **vault** | Show the task notes of an Obsidian vault as one board. See [Vault backend](#vault-backend).
+- **vault** | Show the task notes of an Obsidian vault as a board, optionally split by project. See [Vault backend](#vault-backend).
 
 
 </details>
@@ -183,7 +183,7 @@ uv tool install 'kanban-tui[web]'
 
 ## Vault backend
 
-The `vault` backend shows the task notes of an Obsidian vault as one board. The note's `status` and
+The `vault` backend shows the task notes of an Obsidian vault as a board. The note's `status` and
 `board` frontmatter fields decide the column:
 
 | status      | board       | column           |
@@ -230,6 +230,28 @@ Work = "#4C9AFF"
 | `done_visible_days` | `7`                                              | Days a Done card stays on the board. |
 | `project_colors`    | `{}`                                             | Project name to colour. Other projects get one from a palette. |
 | `personal_category` | `"Personal"`                                     | Category for notes in `00-Inbox`. |
+| `boards`            | `[]`                                             | Named boards that show some projects. See below. |
+| `active_board`      | `""`                                             | Name of the board to show. Empty shows every card. |
+
+### Boards by project
+
+Named boards show a subset of the projects. Each machine keeps its own boards and choice in its config file:
+
+```toml
+[[backend.vault_settings.boards]]
+name = "Work"
+projects = ["Acme"]
+
+[[backend.vault_settings.boards]]
+name = "Personal"
+exclude_projects = ["Acme"]
+```
+
+- `projects` lists the projects a board shows. `exclude_projects` lists the projects it hides. A board with neither shows every card. Names match ignoring case, and notes in `00-Inbox` count as the `personal_category`.
+- The board picker (`B`) lists the "Vault" board, which shows every card, then each named board. Picking one saves its name as `active_board`. A name that is not in `boards` shows every card, with a warning.
+- The new-card form offers only the active board's projects. On a board that hides the personal category, the form starts on the board's first project rather than No Category, since No Category files the note in `00-Inbox`.
+- Boards are set in the config file only. The picker can't add, edit, copy or delete them.
+- The `vault-board` jobs always read every card, whatever board is active.
 
 What the board can do:
 - Move a card between columns. This changes only the `status` and `board` lines of the note, plus a
@@ -251,7 +273,7 @@ The board does not watch the vault. `board.auto_refresh_interval` defaults to `0
 auto_refresh_interval = 60
 ```
 
-Not supported: multiple boards, creating or renaming columns, creating or editing categories,
+Not supported: managing boards from the board picker, creating or renaming columns, creating or editing categories,
 task dependencies, reordering cards inside a column, and the CLI and MCP server.
 
 ## Usage

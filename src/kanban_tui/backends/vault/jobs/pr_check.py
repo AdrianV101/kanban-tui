@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 
-from kanban_tui.backends.vault.backend import VaultBackend
+from kanban_tui.backends.vault.backend import BOARD_ID, VaultBackend
 from kanban_tui.backends.vault.jobs.github import PrFetchError, PrState, parse_pr_url
 from kanban_tui.classes.task import Task
 
@@ -34,7 +34,8 @@ def check_prs(
     """
     report = PrCheckReport()
     fetched: dict[str, PrState] = {}
-    for task in backend.get_tasks_on_active_board():
+    # The all-cards board, so a filtered active board never hides an In Review card.
+    for task in backend.get_tasks_by_board(BOARD_ID):
         if task.metadata["column"] != IN_REVIEW_COLUMN:
             continue
         path = task.metadata["note_path"]

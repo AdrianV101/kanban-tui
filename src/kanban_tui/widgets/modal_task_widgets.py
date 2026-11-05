@@ -250,10 +250,16 @@ class CategorySelector(VimSelect):
             *args,
             options=options,
             prompt="No Category",
-            allow_blank=True,
+            allow_blank=self.allows_no_category(options),
             type_to_search=False,
             **kwargs,
         )
+
+    def allows_no_category(self, options: list) -> bool:
+        """No Category files a vault card in the inbox, so a board must show Personal to offer it."""
+        if self.app.config.backend.mode != Backends.VAULT or not options:
+            return True
+        return self.app.backend.board_shows_personal()
 
     def watch_value(self, old_value, new_value):
         if new_value == self.NEW:
@@ -271,9 +277,13 @@ class CategorySelector(VimSelect):
             self.value = self.NULL
 
     def get_available_categories(self):
+        if self.app.config.backend.mode == Backends.VAULT:
+            categories = self.app.backend.get_board_categories()
+        else:
+            categories = self.app.backend.get_all_categories()
         options = [
             (f"[on {category.color}]  [/] {category.name}", category.category_id)
-            for category in self.app.backend.get_all_categories()
+            for category in categories
         ]
         if self.app.config.backend.mode != Backends.VAULT:
             options.insert(0, ("Add/Edit/Delete categories", self.NEW))

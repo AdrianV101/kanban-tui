@@ -244,6 +244,14 @@ class KanbanTui(App[str | None]):
                     )
                 case Backends.JIRA:
                     self.config.set_active_jql(new_jql=self.active_board.board_id)
+                case Backends.VAULT if old_board is not None:
+                    from kanban_tui.backends.vault.backend import BOARD_ID
+
+                    self.config.set_active_vault_board(
+                        "" if new_board.board_id == BOARD_ID else new_board.name
+                    )
+                    # Vault boards share their columns, so the column watcher won't reload the cards.
+                    self.update_task_list()
 
         self.update_column_list()
         # If updating Board, refresh setting screen
