@@ -341,6 +341,9 @@ class TaskCard(Vertical):
     @work()
     async def action_delete_task(self) -> None:
         if self.app.config.backend.mode == Backends.VAULT:
+            if not self.app.backend.archive_needs_confirmation(self.task_):
+                self.post_message(self.Delete(taskcard=self))
+                return
             confirm_screen = ModalConfirmScreen(
                 text=f"Archive task [blue]{self.task_.title}[/]? The note is kept.",
                 button_text="Archive task",

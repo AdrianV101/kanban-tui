@@ -42,7 +42,8 @@ COLUMN_NAMES: dict[int, str] = {
     5: "Done",
     6: "Archive",
 }
-FALLBACK_COLUMN = 1
+PROPOSED_COLUMN = 1
+FALLBACK_COLUMN = PROPOSED_COLUMN
 DONE_COLUMN = 5
 ARCHIVE_COLUMN = 6
 
@@ -497,6 +498,9 @@ class VaultBackend(Backend):
         result = self.update_task_status(archived)
         if isinstance(result, dict):
             raise VaultWriteError(result["message"])
+
+    def archive_needs_confirmation(self, task: Task) -> bool:
+        return task.column != PROPOSED_COLUMN
 
     def note_url(self, task: Task) -> str:
         rel_path = Path(task.metadata["note_path"]).with_suffix("").as_posix()

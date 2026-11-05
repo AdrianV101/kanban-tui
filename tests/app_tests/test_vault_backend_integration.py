@@ -332,3 +332,92 @@ async def test_side_keys_stay_put_when_every_other_column_is_empty(
         await pilot.pause()
 
         assert vault_app.focused is card
+
+
+def write_proposed_notes(test_vault: Path, count: int) -> None:
+    for index in range(count):
+        write_task_note(
+            test_vault,
+            f"01-Projects/Alpha/tasks/proposed-{index}.md",
+            {"status": "pending"},
+        )
+
+
+def cards_in_column(app: KanbanTui, column: int) -> list[TaskCard]:
+    return [c for c in app.screen.query(TaskCard) if c.task_.column == column]
+
+
+async def test_archiving_a_proposed_card_needs_no_confirmation(
+    vault_app: KanbanTui, test_vault: Path
+):
+    write_proposed_notes(test_vault, 1)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "proposed-0")
+
+        await pilot.press("d")
+        await pilot.pause()
+
+        assert not isinstance(vault_app.screen, ModalConfirmScreen)
+        text = (test_vault / "01-Projects/Alpha/tasks/proposed-0.md").read_text()
+        assert "\nstatus: cancelled\n" in text
+
+
+async def test_a_refused_proposed_archive_is_shown(
+    vault_app: KanbanTui, test_vault: Path
+):
+    write_proposed_notes(test_vault, 1)
+    path = test_vault / "01-Projects/Alpha/tasks/proposed-0.md"
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "proposed-0")
+        path.write_text(path.read_text() + "\nboard: ready\n")
+        path.write_text(path.read_text().replace("status: pending", "status: active"))
+        changed = path.read_text()
+
+        await pilot.press("d")
+        await pilot.pause()
+
+        assert any(n.severity == "error" for n in vault_app._notifications)
+        assert path.read_text() == changed
+
+
+@pytest.mark.parametrize(
+    ("archived_row", "selected_row"),
+    [(0, 0), (1, 1), (3, 2)],
+    ids=["first", "middle", "last"],
+)
+async def test_archiving_keeps_the_selection_at_the_same_place_in_the_column(
+    vault_app: KanbanTui, test_vault: Path, archived_row: int, selected_row: int
+):
+    write_proposed_notes(test_vault, 4)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        cards = cards_in_column(vault_app, 1)
+        cards[archived_row].focus()
+        await pilot.pause()
+
+        await pilot.press("d")
+        await pilot.pause()
+
+        remaining = cards_in_column(vault_app, 1)
+        assert len(remaining) == 3
+        assert vault_app.focused is remaining[selected_row]
+
+
+async def test_archiving_a_column_s_only_card_selects_the_nearest_column(
+    vault_app: KanbanTui, test_vault: Path
+):
+    write_proposed_notes(test_vault, 1)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "proposed-0")
+
+        await pilot.press("d")
+        await pilot.pause()
+
+        assert vault_app.focused.task_.title == "two"

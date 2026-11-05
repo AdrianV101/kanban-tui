@@ -177,12 +177,7 @@ async def test_kanbanboard_movement(test_app: KanbanTui):
         await pilot.press("l")
         await pilot.press("d")
         await pilot.click("#btn_continue")
-        assert pilot.app.focused.task_.title == "Task_ready_2"
-        assert pilot.app.focused.task_.column == 1
-        assert pilot.app.focused.row == 2
-
-        # move right skip done column
-        await pilot.press("l")
+        # doing is empty now, so the next column with cards is selected
         assert pilot.app.focused.task_.title == "Task_done_0"
         assert pilot.app.focused.task_.column == 3
         assert pilot.app.focused.row == 0
@@ -191,6 +186,12 @@ async def test_kanbanboard_movement(test_app: KanbanTui):
         await pilot.press("h")
         assert pilot.app.focused.task_.title == "Task_ready_0"
         assert pilot.app.focused.task_.column == 1
+        assert pilot.app.focused.row == 0
+
+        # move right skip doing column
+        await pilot.press("l")
+        assert pilot.app.focused.task_.title == "Task_done_0"
+        assert pilot.app.focused.task_.column == 3
         assert pilot.app.focused.row == 0
 
 

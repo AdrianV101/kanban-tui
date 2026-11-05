@@ -183,7 +183,8 @@ async def test_task_delete(test_app: KanbanTui):
         await pilot.click("#btn_continue")
         await pilot.pause()
         assert isinstance(pilot.app.screen, BoardScreen)
-        assert pilot.app.focused.id == "taskcard_5"
+        # the next card in the column takes the deleted card's place
+        assert pilot.app.focused.id == "taskcard_2"
 
 
 async def test_task_due_date(test_app: KanbanTui):
