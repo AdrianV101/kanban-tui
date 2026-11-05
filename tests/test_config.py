@@ -95,6 +95,13 @@ def test_default_config(test_config: Settings, test_database_path: str) -> None:
                 "active_session_id": "",
                 "tasks_base_path": "~/.claude/tasks",
             },
+            "vault_settings": {
+                "vault_path": "",
+                "task_globs": ["01-Projects/*/tasks/*.md", "00-Inbox/*.md"],
+                "done_visible_days": 7,
+                "project_colors": {},
+                "personal_category": "Personal",
+            },
             "jira_settings": {
                 "base_url": "",
                 "auth_file_path": AUTH_FILE.as_posix(),

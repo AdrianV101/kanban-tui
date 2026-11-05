@@ -39,12 +39,13 @@ Deletion of existing columns is only possible, if no task is present in the colu
 
 <details><summary>Multiple Backends</summary>
 
-kanban-tui currently supports three backends.
+kanban-tui currently supports four backends.
 - **sqlite** (default) | Supports all features of `kanban-tui`
 - **jira** | Connect to your jira instance via api key and query tasks via jql.
 Columns are defined by task transitions.
 - **claude** | Read the `.json` files under `~/.claude/tasks/`. Boards are created for each session ID.
 Supports only a subset of features
+- **vault** | Show the task notes of an Obsidian vault as one board. See [Vault backend](#vault-backend).
 
 
 </details>
@@ -179,6 +180,79 @@ with the installer of your choice, for example with [uv]:
 uv tool install 'kanban-tui[web]'
 ```
 
+
+## Vault backend
+
+The `vault` backend shows the task notes of an Obsidian vault as one board. The note's `status` and
+`board` frontmatter fields decide the column:
+
+| status      | board       | column           |
+|-------------|-------------|------------------|
+| `pending`   | `proposed`, absent or anything else | Proposed |
+| `pending`   | `ready`     | Ready            |
+| `active`    | `doing`, absent or anything else    | Doing    |
+| `active`    | `in-review` | In Review        |
+| `done`      | ignored     | Done             |
+| `cancelled` | ignored     | Archive (hidden) |
+
+A `type: task` note with a missing or unknown status shows in Proposed. Moving such a card is refused until the note has a `status` line. A note without `type: task` is not a task note and is skipped.
+The optional `prs` field is ignored by the board and never written.
+Done cards stay visible for `done_visible_days` after their `finished` date.
+Cards are coloured by project: the folder name under `01-Projects/`, or the `project` field of the note.
+Notes in `00-Inbox` belong to the `personal_category`.
+
+Install with the `vault` extra, which adds PyYAML:
+
+```bash
+uv tool install 'kanban-tui[vault]'
+```
+
+Set the backend in the config file (`kanban-tui info` shows where it is):
+
+```toml
+[backend]
+mode = "vault"
+
+[backend.vault_settings]
+vault_path = "~/Documents/Notes"
+task_globs = ["01-Projects/*/tasks/*.md", "00-Inbox/*.md"]
+done_visible_days = 7
+personal_category = "Personal"
+
+[backend.vault_settings.project_colors]
+Work = "#4C9AFF"
+```
+
+| setting             | default                                          | meaning |
+|---------------------|--------------------------------------------------|---------|
+| `vault_path`        | `""`                                             | Folder of the vault. Required. |
+| `task_globs`        | `["01-Projects/*/tasks/*.md", "00-Inbox/*.md"]`  | Where task notes live, relative to the vault. |
+| `done_visible_days` | `7`                                              | Days a Done card stays on the board. |
+| `project_colors`    | `{}`                                             | Project name to colour. Other projects get one from a palette. |
+| `personal_category` | `"Personal"`                                     | Category for notes in `00-Inbox`. |
+
+What the board can do:
+- Move a card between columns. This changes only the `status` and `board` lines of the note, plus a
+  `finished: YYYY-MM-DD` line when the card enters Done. A missing `board` line is added at the end of the
+  frontmatter. Moves into Done and Archive leave `board` as it is. Every other byte is kept.
+  If the column on disk, worked out from `status` and `board`, changed since the board loaded,
+  the move is refused and the board asks you to reload.
+- Create a card with `n`. The note is written from `05-Templates/task.md` with the column's `status` and `board`, in the project's tasks folder,
+  or in `00-Inbox` when no project is chosen.
+- Archive a card with `d`. This sets the status to `cancelled` and leaves `board` as it is. The board never deletes a note file.
+- Open the note in Obsidian with `e`, enter or a click on the card.
+
+Every refused write shows as an error. Notes that cannot be read are listed as warnings.
+
+The board does not watch the vault. `board.auto_refresh_interval` defaults to `0` (off), so edits made outside the board appear after pressing `r`. To reload on a timer, set an interval in seconds, for example `60`:
+
+```toml
+[board]
+auto_refresh_interval = 60
+```
+
+Not supported: multiple boards, creating or renaming columns, creating or editing categories,
+task dependencies, reordering cards inside a column, and the CLI and MCP server.
 
 ## Usage
 kanban-tui now also supports the `kanban-tui` entrypoint besides `ktui`.

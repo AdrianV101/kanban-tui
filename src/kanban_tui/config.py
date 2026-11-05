@@ -24,6 +24,7 @@ class Backends(StrEnum):
     SQLITE = "sqlite"
     JIRA = "jira"
     CLAUDE = "claude"
+    VAULT = "vault"
 
 
 class MovementModes(StrEnum):
@@ -74,6 +75,16 @@ class ClaudeBackendSettings(BaseModel):
     active_session_id: str = Field(default="")
 
 
+class VaultBackendSettings(BaseModel):
+    vault_path: str = Field(default="")
+    task_globs: list[str] = Field(
+        default_factory=lambda: ["01-Projects/*/tasks/*.md", "00-Inbox/*.md"]
+    )
+    done_visible_days: int = Field(default=7)
+    project_colors: dict[str, str] = Field(default_factory=dict)
+    personal_category: str = Field(default="Personal")
+
+
 class BackendSettings(BaseModel):
     mode: Backends = Field(default=Backends("sqlite"))
     sqlite_settings: SqliteBackendSettings = Field(
@@ -83,6 +94,7 @@ class BackendSettings(BaseModel):
     claude_settings: ClaudeBackendSettings = Field(
         default_factory=ClaudeBackendSettings
     )
+    vault_settings: VaultBackendSettings = Field(default_factory=VaultBackendSettings)
 
 
 class Settings(BaseSettings):

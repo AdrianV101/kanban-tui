@@ -28,6 +28,7 @@ from textual.widgets import (
     TextArea,
 )
 
+from kanban_tui.config import Backends
 from kanban_tui.modal.modal_category_screen import ModalCategoryManageScreen
 from kanban_tui.widgets.custom_widgets import VimSelect
 from kanban_tui.widgets.date_select import CustomDateSelect
@@ -274,7 +275,8 @@ class CategorySelector(VimSelect):
             (f"[on {category.color}]  [/] {category.name}", category.category_id)
             for category in self.app.backend.get_all_categories()
         ]
-        options.insert(0, ("Add/Edit/Delete categories", self.NEW))
+        if self.app.config.backend.mode != Backends.VAULT:
+            options.insert(0, ("Add/Edit/Delete categories", self.NEW))
         return options
 
 

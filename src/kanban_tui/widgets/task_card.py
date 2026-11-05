@@ -292,6 +292,9 @@ class TaskCard(Vertical):
 
     @on(Click)
     def action_edit_task(self) -> None:
+        if self.app.config.backend.mode == Backends.VAULT:
+            self.app.open_url(self.app.backend.note_url(self.task_))
+            return
         self.app.push_screen(
             ModalTaskEditScreen(task=self.task_), callback=self.from_modal_update_task
         )
@@ -336,11 +339,18 @@ class TaskCard(Vertical):
 
     @work()
     async def action_delete_task(self) -> None:
-        confirm_deletion = await self.app.push_screen(
-            ModalConfirmScreen(
+        if self.app.config.backend.mode == Backends.VAULT:
+            confirm_screen = ModalConfirmScreen(
+                text=f"Archive task [blue]{self.task_.title}[/]? The note is kept.",
+                button_text="Archive task",
+            )
+        else:
+            confirm_screen = ModalConfirmScreen(
                 text=f"Delete task [blue]{self.task_.title}[/]?",
                 button_text="Delete task",
-            ),
+            )
+        confirm_deletion = await self.app.push_screen(
+            confirm_screen,
             wait_for_dismiss=True,
         )
         if confirm_deletion:

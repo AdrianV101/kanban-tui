@@ -184,7 +184,14 @@ class KanbanBoard(HorizontalScroll):
         return True
 
     def action_new_task(self) -> None:
-        self.app.push_screen(ModalTaskEditScreen(), callback=self.place_new_task)
+        column = None
+        if self.app.config.backend.mode == Backends.VAULT:
+            focused = self.app.focused
+            card_task = focused.task_ if isinstance(focused, TaskCard) else None
+            column = card_task.column if card_task else 2
+        self.app.push_screen(
+            ModalTaskEditScreen(column=column), callback=self.place_new_task
+        )
 
     async def action_show_boards(self) -> None:
         await self.app.push_screen(
@@ -194,7 +201,11 @@ class KanbanBoard(HorizontalScroll):
     async def place_new_task(self, task: Task | None) -> None:
         if not task:
             return
-        await self.query(Column)[0].place_task(task=task)
+        if self.app.config.backend.mode == Backends.VAULT:
+            target = self.query_one(f"#column_{task.column}", Column)
+        else:
+            target = self.query(Column)[0]
+        await target.place_task(task=task)
         self.selected_task = task
         self.query_one(f"#taskcard_{self.selected_task.task_id}", TaskCard).focus()
 
@@ -555,10 +566,22 @@ class KanbanBoard(HorizontalScroll):
 
     @on(TaskCard.Delete)
     async def delete_task(self, event: TaskCard.Delete):
+        task_id = event.taskcard.task_.task_id
+        if self.app.config.backend.mode == Backends.VAULT:
+            from kanban_tui.backends.vault.backend import VaultWriteError
+
+            try:
+                self.app.backend.delete_task(task_id=task_id)
+            except VaultWriteError as error:
+                self.app.notify(
+                    str(error), title="Archive Task Failed", severity="error"
+                )
+                return
         await self.query_one(
             f"#column_{event.taskcard.task_.column}", Column
         ).remove_task(task=event.taskcard.task_)
-        self.app.backend.delete_task(task_id=event.taskcard.task_.task_id)
+        if self.app.config.backend.mode != Backends.VAULT:
+            self.app.backend.delete_task(task_id=task_id)
         self.app.update_task_list()
 
         if not self.app.task_list:

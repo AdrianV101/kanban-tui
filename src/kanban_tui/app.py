@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.metadata
 from importlib.metadata import version
 from pathlib import Path
 
@@ -87,9 +88,13 @@ class KanbanTui(App[str | None]):
                 from kanban_tui.backends.claude.backend import ClaudeBackend
 
                 backend = ClaudeBackend(self.config.backend.claude_settings)
+            case Backends.VAULT:
+                from kanban_tui.backends.vault.backend import VaultBackend
+
+                backend = VaultBackend(self.config.backend.vault_settings)
             case _:
                 raise NotImplementedError(
-                    "Only sqlite, jira, and claude backends are supported"
+                    "Only sqlite, jira, claude, and vault backends are supported"
                 )
 
         return backend
@@ -107,6 +112,7 @@ class KanbanTui(App[str | None]):
             self.show_demo_notification()
 
         self.update_board_list()
+        self.notify_backend_warnings()
 
         screen = self.get_screen("board").data_bind(KanbanTui.active_board)
         await self.push_screen(screen)
@@ -178,10 +184,46 @@ class KanbanTui(App[str | None]):
                     message="Read-only mode: viewing Claude Code tasks from ~/.claude/tasks/",
                     severity="information",
                 )
+            case Backends.VAULT:
+                vault_path = self.config.backend.vault_settings.vault_path
+                try:
+                    importlib.metadata.version("pyyaml")
+                except importlib.metadata.PackageNotFoundError:
+                    self.refuse_backend_switch(
+                        event,
+                        title="Optional vault dependency required",
+                        message='Can be installed with: [$warning]uv tool install "kanban-tui\\[vault]"[/]',
+                    )
+                    return
+                if not vault_path or not Path(vault_path).expanduser().is_dir():
+                    self.refuse_backend_switch(
+                        event,
+                        title="Vault backend not available",
+                        message="Set backend.vault_settings.vault_path to an existing vault folder",
+                    )
+                    return
+                self.config.set_backend(new_backend=backend_value)
         self.backend = self.get_backend()
         # This make the checkmark on the new backend
         event.select.update_values()
         self.action_refresh()
+
+    def refuse_backend_switch(
+        self, event: Select.Changed, title: str, message: str
+    ) -> None:
+        self.notify(title=title, message=message, severity="warning")
+        with self.prevent(Select.Changed):
+            event.select.value = f"✔  {self.config.backend.mode}"  # type: ignore[assignment]
+        self.action_focus_next()
+
+    def notify_backend_warnings(self) -> None:
+        if warnings := self.backend.get_warnings():
+            self.notify(
+                title="Some notes could not be read",
+                message="\n".join(warnings),
+                severity="warning",
+                markup=False,
+            )
 
     def update_board_list(self):
         self.board_list = self.backend.get_boards()
@@ -254,6 +296,7 @@ class KanbanTui(App[str | None]):
             return
         self.update_board_list()
         self.watch_column_list()
+        self.notify_backend_warnings()
         # used a worker here, so no await
         self.needs_refresh = True
         self.get_screen("board", BoardScreen).load_kanban_board()
