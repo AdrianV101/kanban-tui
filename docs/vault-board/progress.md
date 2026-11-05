@@ -99,6 +99,9 @@ Each ruling ends with what it costs if wrong.
 17. After the jobs host's first checks, the sweep's Claude runs with `--restricted --strict-mcp-config --mcp-config <generated file>`. The host's user settings pre-allowed vault plugin tools, which reached the run despite ruling 9. Restricted mode ignores the settings files but also drops user MCP servers, so the sweep writes a temporary config holding only Granola and Plaud (`vault-board mcp-config` prints it). The owner's settings stay unchanged. Cost: if a server's name or URL drifts from the user's own config, its sign-in isn't reused, and the setup check catches it.
 18. Granola is read for meetings the owner attended only, so teammates' shared notes aren't scanned. Cost: action items for the owner from a meeting they missed are not drafted.
 19. A meeting or recording with no transcript or notes yet isn't a source error, so it makes no failure card. It stays unprocessed and a later run drafts it. Cost: a run only reads from one day before the source's last success, so a recording transcribed after that window has moved past it is never drafted, and nothing reports it.
+20. Moving a card out of Done removes its `finished` line, since the date belongs only with `done`. Cost: a card moved out of Done by mistake loses its old date, and moving it back stamps today's.
+21. The sweep reads from seven days before each source's last success, not one, so a recording transcribed within a week is still drafted. Processed meetings are remembered for 14 days, so a wider window doesn't draft them twice. This narrows ruling 19's cost. Cost: a recording transcribed more than a week late is still missed without a report.
+22. The prompt asks for one draft per action item, so the card count no longer varies between runs over the same meetings. Cost: a meeting with many small items makes many cards.
 
 ## Next
 
