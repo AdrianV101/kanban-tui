@@ -421,3 +421,62 @@ async def test_archiving_a_column_s_only_card_selects_the_nearest_column(
         await pilot.pause()
 
         assert vault_app.focused.task_.title == "two"
+
+
+@pytest.mark.parametrize(
+    ("key", "column", "fields"),
+    [
+        ("1", 1, "\nstatus: pending\nboard: proposed\n"),
+        ("3", 3, "\nstatus: active\nboard: doing\n"),
+        ("4", 4, "\nstatus: active\nboard: in-review\n"),
+        ("5", 5, "\nstatus: done\n"),
+    ],
+)
+async def test_number_keys_move_the_card_to_that_column(
+    vault_app: KanbanTui, test_vault: Path, key: str, column: int, fields: str
+):
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "two")
+
+        await pilot.press(key)
+        await pilot.pause()
+
+        assert find_card(vault_app, "two").task_.column == column
+        assert vault_app.focused is find_card(vault_app, "two")
+        text = (test_vault / "01-Projects/Alpha/tasks/two.md").read_text()
+        assert fields in text
+
+
+@pytest.mark.parametrize("key", ["2", "6", "9"], ids=["same", "hidden", "none"])
+async def test_number_keys_without_a_new_column_leave_the_note_alone(
+    vault_app: KanbanTui, test_vault: Path, key: str
+):
+    path = test_vault / "01-Projects/Alpha/tasks/two.md"
+    before = path.read_bytes()
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "two")
+
+        await pilot.press(key)
+        await pilot.pause()
+
+        assert find_card(vault_app, "two").task_.column == 2
+        assert path.read_bytes() == before
+
+
+async def test_a_refused_number_key_move_is_shown(
+    vault_app: KanbanTui, test_vault: Path
+):
+    path = test_vault / "01-Projects/Alpha/tasks/two.md"
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "two")
+        path.write_text(path.read_text().replace("board: ready", "board: proposed"))
+
+        await pilot.press("3")
+        await pilot.pause()
+
+        assert any(n.title == "Status Update Failed" for n in vault_app._notifications)
+        assert find_card(vault_app, "two").task_.column == 2

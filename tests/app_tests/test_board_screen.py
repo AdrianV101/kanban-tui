@@ -486,3 +486,20 @@ async def test_custom_footer_backend_switcher(test_app: KanbanTui):
     async with test_app.run_test(size=APP_SIZE) as pilot:
         assert not pilot.app.screen.query_one(VimSelect).display
         assert pilot.app.screen.query_one(VimSelect).value == f"✔  {Backends.SQLITE}"
+
+
+async def test_number_keys_count_only_visible_columns(test_app: KanbanTui):
+    async with test_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        visible = list(test_app.visible_column_dict)
+        assert isinstance(pilot.app.focused, TaskCard)
+        assert pilot.app.focused.task_.title == "Task_ready_0"
+
+        await pilot.press(str(len(visible) + 1))
+        await pilot.pause()
+        assert pilot.app.focused.task_.column == visible[0]
+
+        await pilot.press("2")
+        await pilot.pause()
+        assert pilot.app.focused.task_.title == "Task_ready_0"
+        assert pilot.app.focused.task_.column == visible[1]

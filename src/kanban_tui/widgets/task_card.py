@@ -62,6 +62,16 @@ class TaskCard(Vertical):
             show=True,
             key_display="J",
         ),
+        *(
+            Binding(
+                str(position),
+                f"move_to_column({position})",
+                description="To Column",
+                show=position == 1,
+                key_display="1-9",
+            )
+            for position in range(1, 10)
+        ),
     )
 
     class Focused(Message):
@@ -188,6 +198,16 @@ class TaskCard(Vertical):
                 if column_id_list[-1] == self.task_.column:
                     return self.app.config.task.movement_mode == MovementModes.JUMP
         return True
+
+    def action_move_to_column(self, position: int) -> None:
+        column_ids = list(self.app.visible_column_dict.keys())
+        if self.task_ is None or position > len(column_ids):
+            return
+        new_column_id = column_ids[position - 1]
+        if new_column_id == self.task_.column:
+            return
+        self.update_task_status_on_move(new_column_id)
+        self.post_message(self.Moved(taskcard=self, new_column=new_column_id))
 
     def action_move_task_position(self, direction: Literal["up", "down"]):
         if self.app.config.backend.mode != Backends.SQLITE:
