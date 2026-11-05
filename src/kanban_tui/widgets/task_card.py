@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Literal
 
 from kanban_tui.config import Backends, MovementModes
@@ -7,6 +8,7 @@ from kanban_tui.config import Backends, MovementModes
 if TYPE_CHECKING:
     from kanban_tui.app import KanbanTui
 
+from rich.markup import escape
 from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
@@ -22,6 +24,14 @@ from kanban_tui.classes.task import Task
 from kanban_tui.modal.modal_confirm_screen import ModalConfirmScreen
 from kanban_tui.modal.modal_task_screen import ModalTaskEditScreen
 from kanban_tui.utils import get_column_status_dict
+
+PR_NUMBER = re.compile(r"/pull/(\d+)")
+
+
+def pr_label(link: str) -> str:
+    """`#<number>` for a GitHub PR link, otherwise the link as written."""
+    match = PR_NUMBER.search(link)
+    return f"#{match.group(1)}" if match else link
 
 
 class TaskCard(Vertical):
@@ -48,6 +58,7 @@ class TaskCard(Vertical):
         ),
         Binding("d", "delete_task", description="Delete", show=True),
         Binding("i", "show_blocking_tasks", description="Show Deps", show=True),
+        Binding("p", "open_prs", description="PR", show=True),
         Binding(
             "L",
             "move_task('right')",
@@ -177,6 +188,9 @@ class TaskCard(Vertical):
             "show_blocking_tasks",
         ):
             return False
+
+        if action == "open_prs":
+            return bool(self.linked_prs())
 
         if (
             action == "move_task_position"
@@ -314,7 +328,17 @@ class TaskCard(Vertical):
         else:
             parts.append(":white_check_mark: no dependencies")
 
+        if prs := self.linked_prs():
+            parts.append(":link: " + escape(" ".join(pr_label(link) for link in prs)))
+
         return Text.from_markup("  ".join(parts))
+
+    def linked_prs(self) -> list[str]:
+        return self.task_.metadata.get("prs", []) if self.task_ else []
+
+    def action_open_prs(self) -> None:
+        for link in self.linked_prs():
+            self.app.open_url(link)
 
     @on(Click)
     def action_edit_task(self) -> None:

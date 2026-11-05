@@ -196,7 +196,7 @@ The `vault` backend shows the task notes of an Obsidian vault as a board. The no
 | `cancelled` | ignored     | Archive (hidden) |
 
 A `type: task` note with a missing or unknown status shows in Proposed. Moving such a card is refused until the note has a `status` line. A note without `type: task` is not a task note and is skipped.
-The optional `prs` field is ignored by the board and never written.
+The optional `prs` field lists PR links. A card shows each one as `#<number>` on its info line. The board never writes the field.
 Done cards stay visible for `done_visible_days` after their `finished` date.
 Cards are coloured by project: the folder name under `01-Projects/`, or the `project` field of the note.
 Notes in `00-Inbox` belong to the `personal_category`.
@@ -263,6 +263,7 @@ What the board can do:
   or in `00-Inbox` when no project is chosen.
 - Archive a card with `d`. This sets the status to `cancelled` and leaves `board` as it is. The board never deletes a note file.
 - Open the note in Obsidian with `e`, enter or a click on the card.
+- Open the card's PRs in the browser with `p`. A card with several PRs opens each one. On a card with none, `p` does nothing.
 
 Every refused write shows as an error. Notes that cannot be read are listed as warnings.
 

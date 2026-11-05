@@ -1,5 +1,6 @@
 """Integration tests for the vault backend in the TUI app."""
 
+import json
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
@@ -670,3 +671,78 @@ async def test_the_board_picker_cannot_add_change_or_remove_vault_boards(
         assert not vault_app.screen.query("#btn_create_board")
         names = [board.name for board in vault_app.backend.get_boards()]
         assert names == ["Vault", "Work", "Personal", "Garden"]
+
+
+PR = "https://github.com/acme/app/pull/{}"
+THREE_PRS = [PR.format(7), PR.format(12), PR.format(30)]
+
+
+def write_linked_note(test_vault: Path, prs: list[str] | None) -> None:
+    write_task_note(
+        test_vault,
+        "01-Projects/Alpha/tasks/linked.md",
+        {
+            "status": "pending",
+            "board": "ready",
+            "prs": json.dumps(prs) if prs else None,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "prs,shown",
+    [
+        (None, None),
+        ([PR.format(7)], "#7"),
+        (THREE_PRS, "#7 #12 #30"),
+        (["see the [release] branch"], "see the [release] branch"),
+    ],
+    ids=["none", "one", "three", "not-a-pr-link"],
+)
+async def test_a_card_s_info_line_ends_with_its_prs(
+    vault_app: KanbanTui, test_vault: Path, prs: list[str] | None, shown: str | None
+):
+    write_linked_note(test_vault, prs)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        line = str(find_card(vault_app, "linked").metadata_label.content)
+
+        if shown is None:
+            assert "🔗" not in line
+        else:
+            assert line.endswith(f"🔗 {shown}")
+
+
+@pytest.mark.parametrize(
+    "prs", [[], [PR.format(7)], THREE_PRS], ids=["none", "one", "three"]
+)
+async def test_p_opens_exactly_the_focused_card_s_prs(
+    vault_app: KanbanTui, test_vault: Path, monkeypatch, prs: list[str]
+):
+    write_linked_note(test_vault, prs)
+    opened: list[str] = []
+    monkeypatch.setattr(vault_app, "open_url", lambda url, **_: opened.append(url))
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "linked")
+
+        await pilot.press("p")
+        await pilot.pause()
+
+        assert opened == prs
+        assert not any(n.severity == "error" for n in vault_app._notifications)
+
+
+@pytest.mark.parametrize("prs,listed", [(None, False), ([PR.format(7)], True)])
+async def test_the_footer_lists_p_only_when_the_focused_card_has_a_pr(
+    vault_app: KanbanTui, test_vault: Path, prs: list[str] | None, listed: bool
+):
+    write_linked_note(test_vault, prs)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "linked")
+
+        assert ("p" in vault_app.screen.active_bindings) is listed
