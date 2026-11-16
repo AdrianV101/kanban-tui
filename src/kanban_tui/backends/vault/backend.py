@@ -19,6 +19,12 @@ from kanban_tui.backends.vault.notes import (
     with_appended_line,
     with_card_fields,
 )
+from kanban_tui.backends.vault.sessions import (
+    SessionFolder,
+    SessionFolderKind,
+    find_checkouts,
+    read_repos,
+)
 from kanban_tui.classes.board import Board
 from kanban_tui.classes.category import Category
 from kanban_tui.classes.column import Column
@@ -91,6 +97,7 @@ BOARD_NAME = "Vault"
 BOARD_ICON = "🗃️"
 TEMPLATE_PATH = "05-Templates/task.md"
 INBOX_FOLDER = "00-Inbox"
+PROJECTS_FOLDER = "01-Projects"
 
 
 class VaultWriteError(Exception):
@@ -550,6 +557,43 @@ class VaultBackend(Backend):
 
     def archive_needs_confirmation(self, task: Task) -> bool:
         return task.column != PROPOSED_COLUMN
+
+    def session_folder(self, task: Task) -> SessionFolder:
+        """Where a Claude Code session on `task` starts.
+
+        The project is the folder under `01-Projects/` holding the note, or
+        else the note's `project` field. Its `_index.md` `repos:` are matched
+        against main checkouts directly under `checkouts_root`.
+        """
+        root = self.settings.checkouts_root
+        project = self._project_of(task)
+        if project is None:
+            return SessionFolder(SessionFolderKind.NO_PROJECT, None, root)
+        remotes = read_repos(self._vault_root / PROJECTS_FOLDER / project / "_index.md")
+        if not remotes:
+            return SessionFolder(SessionFolderKind.NO_LINK, project, root)
+        matches = tuple(find_checkouts(Path(root), remotes))
+        if len(matches) == 1:
+            return SessionFolder(
+                SessionFolderKind.LINKED, project, root, matches[0], remotes
+            )
+        kind = SessionFolderKind.SEVERAL if matches else SessionFolderKind.NOT_HERE
+        return SessionFolder(kind, project, root, None, remotes, matches)
+
+    def _project_of(self, task: Task) -> str | None:
+        rel_path = task.metadata["note_path"]
+        parts = Path(rel_path).parts
+        if len(parts) > 2 and parts[0] == PROJECTS_FOLDER:
+            project: str | None = parts[1]
+        else:
+            try:
+                note = read_task_note(self._vault_root / rel_path, self._vault_root)
+            except NoteReadError:
+                note = None
+            project = note.project if note else None
+        if project and (self._vault_root / PROJECTS_FOLDER / project).is_dir():
+            return project
+        return None
 
     def note_url(self, task: Task) -> str:
         rel_path = Path(task.metadata["note_path"]).with_suffix("").as_posix()

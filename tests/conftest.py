@@ -1,4 +1,5 @@
 import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -183,3 +184,18 @@ def vault_app(
     app.config.backend.vault_settings.vault_path = test_vault.as_posix()
     app.backend = app.get_backend()
     yield app
+
+
+def make_checkout(path: Path, remotes: dict[str, str] | None = None) -> Path:
+    """A real git repo at `path` with one commit and the given remotes."""
+    path.mkdir(parents=True, exist_ok=True)
+    git = ["git", "-C", path.as_posix()]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run(
+        [*git, "-c", "user.name=t", "-c", "user.email=t@t", "commit"]
+        + ["-q", "--allow-empty", "-m", "init"],
+        check=True,
+    )
+    for name, url in (remotes or {}).items():
+        subprocess.run([*git, "remote", "add", name, url], check=True)
+    return path

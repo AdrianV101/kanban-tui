@@ -929,3 +929,16 @@ ModalNewJiraBoardScreen {
         }
     }
 }
+
+ModalSessionFolderScreen {
+  align: center middle;
+  Vertical {
+    width: 70%;
+    height: auto;
+    border: $success;
+    padding: 0 1;
+  }
+  #session_error {
+    color: $error;
+  }
+}

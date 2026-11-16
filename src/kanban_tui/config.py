@@ -97,6 +97,7 @@ class VaultBackendSettings(BaseModel):
     personal_category: str = Field(default="Personal")
     boards: list[VaultBoard] = Field(default_factory=list)
     active_board: str = Field(default="")
+    checkouts_root: str = Field(default="~/Projects")
 
 
 class BackendSettings(BaseModel):

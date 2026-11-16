@@ -41,6 +41,24 @@ vault_path = "<vault>"
 auto_refresh_interval = 60
 ```
 
+## Start a Claude Code session from a card
+
+Press `t` on a card in Proposed, Ready or Doing. The board opens a kitty tab in the background that runs `claude "/vault-pkm:tackle-task <note path>"`. The tab is titled with the task.
+
+The tab starts in this device's checkout of the project's repo. The board reads the remotes in `repos:` of the project's `_index.md` (vault-pkm v4's link). It then looks for a main git checkout with one of those remotes directly under `checkouts_root`. When nothing matches, or several checkouts match, the board shows an error and starts nothing. A project with no `repos:`, and an inbox task with no project, get a question asking which folder to start in.
+
+```toml
+[backend.vault_settings]
+checkouts_root = "~/Projects"   # the default
+```
+
+Run the board in kitty, with remote control on. Add these lines to `~/.config/kitty/kitty.conf`, then restart kitty:
+
+```
+allow_remote_control socket-only
+listen_on unix:/tmp/kitty
+```
+
 ## Work on it from a device
 
 ```bash
