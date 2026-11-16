@@ -19,6 +19,7 @@ from kanban_tui.backends.vault.notes import (
     with_appended_line,
     with_card_fields,
 )
+from kanban_tui.backends.vault.sessions import SessionFolder
 from kanban_tui.classes.board import Board
 from kanban_tui.classes.category import Category
 from kanban_tui.classes.column import Column
@@ -550,6 +551,15 @@ class VaultBackend(Backend):
 
     def archive_needs_confirmation(self, task: Task) -> bool:
         return task.column != PROPOSED_COLUMN
+
+    def session_folder(self, task: Task) -> SessionFolder:
+        """Where a Claude Code session on `task` starts.
+
+        The project is the folder under `01-Projects/` holding the note, or
+        else the note's `project` field. Its `_index.md` `repos:` are matched
+        against main checkouts directly under `checkouts_root`.
+        """
+        raise NotImplementedError
 
     def note_url(self, task: Task) -> str:
         rel_path = Path(task.metadata["note_path"]).with_suffix("").as_posix()

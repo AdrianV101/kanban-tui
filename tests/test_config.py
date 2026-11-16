@@ -103,6 +103,7 @@ def test_default_config(test_config: Settings, test_database_path: str) -> None:
                 "personal_category": "Personal",
                 "boards": [],
                 "active_board": "",
+                "checkouts_root": "~/Projects",
             },
             "jira_settings": {
                 "base_url": "",
