@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from textual.widgets import Input, Label
@@ -11,7 +15,7 @@ from kanban_tui.app import KanbanTui
 from kanban_tui.backends.vault.sessions import SessionFolder, SessionFolderKind
 from kanban_tui.modal.modal_session_folder_screen import ModalSessionFolderScreen
 from kanban_tui.widgets.task_card import TaskCard
-from tests.conftest import write_task_note
+from tests.conftest import make_checkout, write_task_note
 
 APP_SIZE = (150, 50)
 NOTE = "01-Projects/Alpha/tasks/tackle-me.md"
@@ -257,3 +261,46 @@ async def test_the_folder_question_refuses_what_is_not_a_folder(
         assert modal_text(card_app) != hint
         assert "not a folder" in modal_text(card_app)
         assert launches == []
+
+
+async def test_t_starts_kitty_in_the_real_checkout_of_a_linked_project(
+    vault_app: KanbanTui, test_vault: Path, tmp_path: Path, monkeypatch
+):
+    root = tmp_path / "root"
+    checkout = make_checkout(root / "frontend", {"origin": f"git@{REMOTE}.git"})
+    make_checkout(root / "other", {"origin": "https://github.com/someone/else"})
+    (test_vault / "01-Projects/Alpha/_index.md").parent.mkdir(
+        parents=True, exist_ok=True
+    )
+    (test_vault / "01-Projects/Alpha/_index.md").write_text(
+        f"---\ntype: project\nrepos:\n  - {REMOTE}\n---\n", encoding="utf-8"
+    )
+    write_task_note(test_vault, NOTE, {"status": "pending", "board": "ready"})
+    vault_app.config.backend.vault_settings.checkouts_root = root.as_posix()
+    vault_app.backend = vault_app.get_backend()
+
+    monkeypatch.setenv("KITTY_WINDOW_ID", "1")
+    monkeypatch.setenv("KITTY_LISTEN_ON", "unix:/tmp/kitty-1")
+    monkeypatch.setattr(shutil, "which", lambda name: f"/opt/bin/{name}")
+    kitty_calls: list[list[str]] = []
+    real_run = subprocess.run
+
+    def run(argv: list[str], **kwargs: Any) -> Any:
+        if argv[0] == "/opt/bin/kitty":
+            kitty_calls.append(argv)
+            return SimpleNamespace(returncode=0, stderr="")
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    async with vault_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        await focus_card(vault_app, pilot, "tackle-me")
+
+        await pilot.press("t")
+        await pilot.pause()
+
+        [argv] = kitty_calls
+        assert argv[argv.index("--cwd") + 1] == checkout.as_posix()
+        assert argv[-1] == f"/vault-pkm:tackle-task {NOTE}"
+        assert errors(vault_app) == []
