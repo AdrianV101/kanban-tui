@@ -14,6 +14,7 @@ from textual.widget import Widget
 from textual.widgets import Button, Footer, Input, Label, Select, Switch, TextArea
 
 from kanban_tui.classes.task import Task
+from kanban_tui.config import Backends
 from kanban_tui.textual_datepicker import DateSelect
 from kanban_tui.widgets.custom_widgets import ButtonRow
 from kanban_tui.widgets.modal_task_widgets import (
@@ -34,8 +35,15 @@ class ModalTaskEditScreen(ModalScreen[Task | None]):
         Binding("ctrl+j", "update_task", "Save/Edit Task", priority=True),
     ]
 
-    def __init__(self, task: Task | None = None, *args, **kwargs) -> None:
+    def __init__(
+        self,
+        task: Task | None = None,
+        *args,
+        column: int | None = None,
+        **kwargs,
+    ) -> None:
         self.kanban_task = task
+        self.new_task_column = column
         super().__init__(*args, **kwargs)
 
     def compose(self) -> Iterable[Widget]:
@@ -96,13 +104,24 @@ class ModalTaskEditScreen(ModalScreen[Task | None]):
 
         # create new task
         if not self.kanban_task:
-            new_task = self.app.backend.create_new_task(
-                title=title,
-                description=description,
-                column=next(iter(self.app.visible_column_dict)),
-                category=category,
-                due_date=due_date,
+            column = (
+                self.new_task_column
+                if self.new_task_column is not None
+                else next(iter(self.app.visible_column_dict))
             )
+            try:
+                new_task = self.app.backend.create_new_task(
+                    title=title,
+                    description=description,
+                    column=column,
+                    category=category,
+                    due_date=due_date,
+                )
+            except self.refusal_errors() as error:
+                self.app.notify(
+                    str(error), title="Create Task Failed", severity="error"
+                )
+                return
 
             self.app.update_task_list()
             self.dismiss(result=new_task)
@@ -124,6 +143,13 @@ class ModalTaskEditScreen(ModalScreen[Task | None]):
                 due_date=self.kanban_task.due_date,
             )
             self.dismiss(result=updated_task)
+
+    def refusal_errors(self) -> tuple[type[Exception], ...]:
+        if self.app.config.backend.mode != Backends.VAULT:
+            return ()
+        from kanban_tui.backends.vault.backend import VaultWriteError
+
+        return (VaultWriteError,)
 
     @on(Button.Pressed, "#btn_cancel")
     def close_window(self):

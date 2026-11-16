@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from kanban_tui.app import KanbanTui
 
 from rich.text import Text
+from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -12,6 +13,17 @@ from textual.widgets import Label
 
 from kanban_tui.classes.task import Task
 from kanban_tui.widgets.task_card import TaskCard
+
+
+class ColumnScroll(VerticalScroll, inherit_bindings=False):
+    """Leaves the arrow keys to the board, which moves the selected card."""
+
+    BINDINGS = [
+        Binding("home", "scroll_home", "Scroll Home", show=False),
+        Binding("end", "scroll_end", "Scroll End", show=False),
+        Binding("pageup", "page_up", "Page Up", show=False),
+        Binding("pagedown", "page_down", "Page Down", show=False),
+    ]
 
 
 class Column(Vertical):
@@ -30,7 +42,7 @@ class Column(Vertical):
 
     def compose(self) -> Iterable[Widget]:
         yield Label(Text.from_markup(self.title), id=f"label_{self.id}")
-        yield VerticalScroll(id=f"vscroll_{self.id}", can_focus=False)
+        yield ColumnScroll(id=f"vscroll_{self.id}", can_focus=False)
 
     async def on_mount(self) -> None:
         await self.replace_tasks(self.task_list)

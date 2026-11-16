@@ -177,21 +177,22 @@ async def test_kanbanboard_movement(test_app: KanbanTui):
         await pilot.press("l")
         await pilot.press("d")
         await pilot.click("#btn_continue")
-        assert pilot.app.focused.task_.title == "Task_ready_2"
-        assert pilot.app.focused.task_.column == 1
-        assert pilot.app.focused.row == 2
-
-        # move right skip done column
-        await pilot.press("l")
+        # doing is empty now, so the next column with cards is selected
         assert pilot.app.focused.task_.title == "Task_done_0"
         assert pilot.app.focused.task_.column == 3
         assert pilot.app.focused.row == 0
 
-        # move left skip done column
+        # move left skip doing column, keeping the row
         await pilot.press("h")
-        assert pilot.app.focused.task_.title == "Task_ready_2"
+        assert pilot.app.focused.task_.title == "Task_ready_0"
         assert pilot.app.focused.task_.column == 1
-        assert pilot.app.focused.row == 2
+        assert pilot.app.focused.row == 0
+
+        # move right skip doing column
+        await pilot.press("l")
+        assert pilot.app.focused.task_.title == "Task_done_0"
+        assert pilot.app.focused.task_.column == 3
+        assert pilot.app.focused.row == 0
 
 
 async def test_kanbanboard_card_movement_adjacent(test_app: KanbanTui):
@@ -485,3 +486,26 @@ async def test_custom_footer_backend_switcher(test_app: KanbanTui):
     async with test_app.run_test(size=APP_SIZE) as pilot:
         assert not pilot.app.screen.query_one(VimSelect).display
         assert pilot.app.screen.query_one(VimSelect).value == f"✔  {Backends.SQLITE}"
+
+
+async def test_number_keys_count_only_visible_columns(test_app: KanbanTui):
+    async with test_app.run_test(size=APP_SIZE) as pilot:
+        await pilot.pause()
+        visible = list(test_app.visible_column_dict)
+        assert isinstance(pilot.app.focused, TaskCard)
+        assert pilot.app.focused.task_.title == "Task_ready_0"
+
+        await pilot.press(str(len(visible) + 1))
+        await pilot.pause()
+        assert pilot.app.focused.task_.column == visible[0]
+
+        await pilot.press("2")
+        await pilot.pause()
+        moved = next(
+            card
+            for card in pilot.app.screen.query(TaskCard)
+            if card.task_.title == "Task_ready_0"
+        )
+        assert moved.task_.column == visible[1]
+        assert pilot.app.focused.task_.title == "Task_ready_1"
+        assert pilot.app.focused.task_.column == visible[0]

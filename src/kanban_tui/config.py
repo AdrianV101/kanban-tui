@@ -24,6 +24,7 @@ class Backends(StrEnum):
     SQLITE = "sqlite"
     JIRA = "jira"
     CLAUDE = "claude"
+    VAULT = "vault"
 
 
 class MovementModes(StrEnum):
@@ -74,6 +75,31 @@ class ClaudeBackendSettings(BaseModel):
     active_session_id: str = Field(default="")
 
 
+class VaultBoard(BaseModel):
+    """A named view of the vault board. Project names match ignoring case.
+
+    With `projects`, only those projects show. Projects in `exclude_projects`
+    never show. With neither, every card shows.
+    """
+
+    name: str
+    projects: list[str] = Field(default_factory=list)
+    exclude_projects: list[str] = Field(default_factory=list)
+
+
+class VaultBackendSettings(BaseModel):
+    vault_path: str = Field(default="")
+    task_globs: list[str] = Field(
+        default_factory=lambda: ["01-Projects/*/tasks/*.md", "00-Inbox/*.md"]
+    )
+    done_visible_days: int = Field(default=7)
+    project_colors: dict[str, str] = Field(default_factory=dict)
+    personal_category: str = Field(default="Personal")
+    boards: list[VaultBoard] = Field(default_factory=list)
+    active_board: str = Field(default="")
+    checkouts_root: str = Field(default="~/Projects")
+
+
 class BackendSettings(BaseModel):
     mode: Backends = Field(default=Backends("sqlite"))
     sqlite_settings: SqliteBackendSettings = Field(
@@ -83,6 +109,7 @@ class BackendSettings(BaseModel):
     claude_settings: ClaudeBackendSettings = Field(
         default_factory=ClaudeBackendSettings
     )
+    vault_settings: VaultBackendSettings = Field(default_factory=VaultBackendSettings)
 
 
 class Settings(BaseSettings):
@@ -136,6 +163,10 @@ class Settings(BaseSettings):
 
     def set_active_claude_session(self, new_session_id: str) -> None:
         self.backend.claude_settings.active_session_id = new_session_id
+        self.save()
+
+    def set_active_vault_board(self, new_board_name: str) -> None:
+        self.backend.vault_settings.active_board = new_board_name
         self.save()
 
     def set_base_url(self, new_base_url: str) -> None:

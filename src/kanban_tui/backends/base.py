@@ -17,3 +17,6 @@ class Backend:
         append_mode=None,
     ):
         raise NotImplementedError("This is required")
+
+    def get_warnings(self) -> list[str]:
+        return []

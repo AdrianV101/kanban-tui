@@ -42,6 +42,7 @@ Changelog = "https://github.com/Zaloog/kanban-tui/blob/main/CHANGELOG.md"
 [project.scripts]
 ktui = "kanban_tui.cli:cli"
 kanban-tui = "kanban_tui.cli:cli"
+vault-board = "kanban_tui.backends.vault.jobs.cli:main"
 
 [project.optional-dependencies]
 web = [
@@ -52,6 +53,9 @@ jira = [
 ]
 mcp = [
     "pycli-mcp>=0.3.0",
+]
+vault = [
+    "pyyaml>=6.0",
 ]
 
 
@@ -66,6 +70,7 @@ dev = [
     "ruff>=0.13.1",
     "mypy>=1.18.2",
     "types-python-dateutil>=2.9.0.20250822",
+    "types-PyYAML",
     "prek>=0.2.25",
 ]
 

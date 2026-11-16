@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from kanban_tui.config import Backends, MovementModes
@@ -7,6 +9,7 @@ from kanban_tui.config import Backends, MovementModes
 if TYPE_CHECKING:
     from kanban_tui.app import KanbanTui
 
+from rich.markup import escape
 from rich.text import Text
 from textual import on, work
 from textual.app import ComposeResult
@@ -17,10 +20,29 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Label, Markdown
 
+from kanban_tui.backends.vault.launch_session import launch_session
+from kanban_tui.backends.vault.open_note import open_note
+from kanban_tui.backends.vault.sessions import SessionFolderKind
 from kanban_tui.classes.task import Task
 from kanban_tui.modal.modal_confirm_screen import ModalConfirmScreen
+from kanban_tui.modal.modal_session_folder_screen import (
+    ModalSessionFolderScreen,
+    folder_suggestions,
+)
 from kanban_tui.modal.modal_task_screen import ModalTaskEditScreen
 from kanban_tui.utils import get_column_status_dict
+
+PR_NUMBER = re.compile(r"/pull/(\d+)")
+
+
+def pr_label(link: str) -> str:
+    """`#<number>` for a GitHub PR link, otherwise the link as written."""
+    match = PR_NUMBER.search(link)
+    return f"#{match.group(1)}" if match else link
+
+
+# Proposed, Ready and Doing in the vault backend.
+SESSION_COLUMNS = (1, 2, 3)
 
 
 class TaskCard(Vertical):
@@ -47,6 +69,8 @@ class TaskCard(Vertical):
         ),
         Binding("d", "delete_task", description="Delete", show=True),
         Binding("i", "show_blocking_tasks", description="Show Deps", show=True),
+        Binding("p", "open_prs", description="PR", show=True),
+        Binding("t", "start_session", description="Tackle", show=True),
         Binding(
             "L",
             "move_task('right')",
@@ -60,6 +84,16 @@ class TaskCard(Vertical):
             description="Move Down",
             show=True,
             key_display="J",
+        ),
+        *(
+            Binding(
+                str(position),
+                f"move_to_column({position})",
+                description="To Column",
+                show=position == 1,
+                key_display="1-9",
+            )
+            for position in range(1, 10)
         ),
     )
 
@@ -85,9 +119,12 @@ class TaskCard(Vertical):
             return self.taskcard
 
     class Moved(Message):
-        def __init__(self, taskcard: TaskCard, new_column: int) -> None:
+        def __init__(
+            self, taskcard: TaskCard, new_column: int, keep_selection: bool = False
+        ) -> None:
             self.taskcard = taskcard
             self.new_column = new_column
+            self.keep_selection = keep_selection
             super().__init__()
 
         @property
@@ -164,6 +201,16 @@ class TaskCard(Vertical):
         ):
             return False
 
+        if action == "open_prs":
+            return bool(self.linked_prs())
+
+        if action == "start_session":
+            return (
+                self.app.config.backend.mode == Backends.VAULT
+                and self.task_ is not None
+                and self.task_.column in SESSION_COLUMNS
+            )
+
         if (
             action == "move_task_position"
             and self.app.config.backend.mode != Backends.SQLITE
@@ -187,6 +234,18 @@ class TaskCard(Vertical):
                 if column_id_list[-1] == self.task_.column:
                     return self.app.config.task.movement_mode == MovementModes.JUMP
         return True
+
+    def action_move_to_column(self, position: int) -> None:
+        column_ids = list(self.app.visible_column_dict.keys())
+        if self.task_ is None or position > len(column_ids):
+            return
+        new_column_id = column_ids[position - 1]
+        if new_column_id == self.task_.column:
+            return
+        self.update_task_status_on_move(new_column_id)
+        self.post_message(
+            self.Moved(taskcard=self, new_column=new_column_id, keep_selection=True)
+        )
 
     def action_move_task_position(self, direction: Literal["up", "down"]):
         if self.app.config.backend.mode != Backends.SQLITE:
@@ -288,10 +347,56 @@ class TaskCard(Vertical):
         else:
             parts.append(":white_check_mark: no dependencies")
 
+        if prs := self.linked_prs():
+            parts.append(":link: " + escape(" ".join(pr_label(link) for link in prs)))
+
         return Text.from_markup("  ".join(parts))
+
+    def linked_prs(self) -> list[str]:
+        return self.task_.metadata.get("prs", []) if self.task_ else []
+
+    def action_open_prs(self) -> None:
+        for link in self.linked_prs():
+            self.app.open_url(link)
+
+    def action_start_session(self) -> None:
+        task = self.task_
+        if task is None:
+            return
+        place = self.app.backend.session_folder(task)
+        if place.kind == SessionFolderKind.LINKED and place.folder is not None:
+            self.start_session_in(task, place.folder)
+        elif place.kind == SessionFolderKind.NOT_HERE:
+            self.app.notify(
+                f"No checkout of {', '.join(place.remotes)} under {place.root}. "
+                "Clone it there to start a session.",
+                severity="error",
+            )
+        elif place.kind == SessionFolderKind.SEVERAL:
+            folders = ", ".join(match.as_posix() for match in place.matches)
+            self.app.notify(
+                f"Several checkouts of {', '.join(place.remotes)} under "
+                f"{place.root}: {folders}. Keep one to start a session.",
+                severity="error",
+            )
+        else:
+            self.app.push_screen(
+                ModalSessionFolderScreen(
+                    project=place.project,
+                    suggestions=folder_suggestions(place.root),
+                ),
+                callback=lambda folder: self.start_session_in(task, folder),
+            )
+
+    def start_session_in(self, task: Task, folder: Path | None) -> None:
+        if folder is not None:
+            launch_session(self.app, folder, task.title, task.metadata["note_path"])
 
     @on(Click)
     def action_edit_task(self) -> None:
+        if self.app.config.backend.mode == Backends.VAULT:
+            open_note(self.app, self.app.backend.note_url(self.task_))
+            return
         self.app.push_screen(
             ModalTaskEditScreen(task=self.task_), callback=self.from_modal_update_task
         )
@@ -336,11 +441,21 @@ class TaskCard(Vertical):
 
     @work()
     async def action_delete_task(self) -> None:
-        confirm_deletion = await self.app.push_screen(
-            ModalConfirmScreen(
+        if self.app.config.backend.mode == Backends.VAULT:
+            if not self.app.backend.archive_needs_confirmation(self.task_):
+                self.post_message(self.Delete(taskcard=self))
+                return
+            confirm_screen = ModalConfirmScreen(
+                text=f"Archive task [blue]{self.task_.title}[/]? The note is kept.",
+                button_text="Archive task",
+            )
+        else:
+            confirm_screen = ModalConfirmScreen(
                 text=f"Delete task [blue]{self.task_.title}[/]?",
                 button_text="Delete task",
-            ),
+            )
+        confirm_deletion = await self.app.push_screen(
+            confirm_screen,
             wait_for_dismiss=True,
         )
         if confirm_deletion:

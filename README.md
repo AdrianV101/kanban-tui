@@ -39,12 +39,13 @@ Deletion of existing columns is only possible, if no task is present in the colu
 
 <details><summary>Multiple Backends</summary>
 
-kanban-tui currently supports three backends.
+kanban-tui currently supports four backends.
 - **sqlite** (default) | Supports all features of `kanban-tui`
 - **jira** | Connect to your jira instance via api key and query tasks via jql.
 Columns are defined by task transitions.
 - **claude** | Read the `.json` files under `~/.claude/tasks/`. Boards are created for each session ID.
 Supports only a subset of features
+- **vault** | Show the task notes of an Obsidian vault as a board, optionally split by project. See [Vault backend](#vault-backend).
 
 
 </details>
@@ -179,6 +180,102 @@ with the installer of your choice, for example with [uv]:
 uv tool install 'kanban-tui[web]'
 ```
 
+
+## Vault backend
+
+The `vault` backend shows the task notes of an Obsidian vault as a board. The note's `status` and
+`board` frontmatter fields decide the column:
+
+| status      | board       | column           |
+|-------------|-------------|------------------|
+| `pending`   | `proposed`, absent or anything else | Proposed |
+| `pending`   | `ready`     | Ready            |
+| `active`    | `doing`, absent or anything else    | Doing    |
+| `active`    | `in-review` | In Review        |
+| `done`      | ignored     | Done             |
+| `cancelled` | ignored     | Archive (hidden) |
+
+A `type: task` note with a missing or unknown status shows in Proposed. Moving such a card is refused until the note has a `status` line. A note without `type: task` is not a task note and is skipped.
+The optional `prs` field lists PR links. A card shows each one as `#<number>` on its info line. The board never writes the field.
+Done cards stay visible for `done_visible_days` after their `finished` date.
+Cards are coloured by project: the folder name under `01-Projects/`, or the `project` field of the note.
+Notes in `00-Inbox` belong to the `personal_category`.
+
+Install with the `vault` extra, which adds PyYAML:
+
+```bash
+uv tool install 'kanban-tui[vault]'
+```
+
+Set the backend in the config file (`kanban-tui info` shows where it is):
+
+```toml
+[backend]
+mode = "vault"
+
+[backend.vault_settings]
+vault_path = "~/Documents/Notes"
+task_globs = ["01-Projects/*/tasks/*.md", "00-Inbox/*.md"]
+done_visible_days = 7
+personal_category = "Personal"
+
+[backend.vault_settings.project_colors]
+Work = "#4C9AFF"
+```
+
+| setting             | default                                          | meaning |
+|---------------------|--------------------------------------------------|---------|
+| `vault_path`        | `""`                                             | Folder of the vault. Required. |
+| `task_globs`        | `["01-Projects/*/tasks/*.md", "00-Inbox/*.md"]`  | Where task notes live, relative to the vault. |
+| `done_visible_days` | `7`                                              | Days a Done card stays on the board. |
+| `project_colors`    | `{}`                                             | Project name to colour. Other projects get one from a palette. |
+| `personal_category` | `"Personal"`                                     | Category for notes in `00-Inbox`. |
+| `boards`            | `[]`                                             | Named boards that show some projects. See below. |
+| `active_board`      | `""`                                             | Name of the board to show. Empty shows every card. |
+
+### Boards by project
+
+Named boards show a subset of the projects. Each machine keeps its own boards and choice in its config file:
+
+```toml
+[[backend.vault_settings.boards]]
+name = "Work"
+projects = ["Acme"]
+
+[[backend.vault_settings.boards]]
+name = "Personal"
+exclude_projects = ["Acme"]
+```
+
+- `projects` lists the projects a board shows. `exclude_projects` lists the projects it hides. A board with neither shows every card. Names match ignoring case, and notes in `00-Inbox` count as the `personal_category`.
+- The board picker (`B`) lists the "Vault" board, which shows every card, then each named board. Picking one saves its name as `active_board`. A name that is not in `boards` shows every card, with a warning.
+- The new-card form offers only the active board's projects. On a board that hides the personal category, the form starts on the board's first project rather than No Category, since No Category files the note in `00-Inbox`.
+- Boards are set in the config file only. The picker can't add, edit, copy or delete them.
+- The `vault-board` jobs always read every card, whatever board is active.
+
+What the board can do:
+- Move a card between columns. This changes only the `status` and `board` lines of the note, plus a
+  `finished: YYYY-MM-DD` line when the card enters Done. A missing `board` line is added at the end of the
+  frontmatter. Moves into Done and Archive leave `board` as it is. Every other byte is kept.
+  If the column on disk, worked out from `status` and `board`, changed since the board loaded,
+  the move is refused and the board asks you to reload.
+- Create a card with `n`. The note is written from `05-Templates/task.md` with the column's `status` and `board`, in the project's tasks folder,
+  or in `00-Inbox` when no project is chosen.
+- Archive a card with `d`. This sets the status to `cancelled` and leaves `board` as it is. The board never deletes a note file.
+- Open the note in Obsidian with `e`, enter or a click on the card.
+- Open the card's PRs in the browser with `p`. A card with several PRs opens each one. On a card with none, `p` does nothing.
+
+Every refused write shows as an error. Notes that cannot be read are listed as warnings.
+
+The board does not watch the vault. `board.auto_refresh_interval` defaults to `0` (off), so edits made outside the board appear after pressing `r`. To reload on a timer, set an interval in seconds, for example `60`:
+
+```toml
+[board]
+auto_refresh_interval = 60
+```
+
+Not supported: managing boards from the board picker, creating or renaming columns, creating or editing categories,
+task dependencies, reordering cards inside a column, and the CLI and MCP server.
 
 ## Usage
 kanban-tui now also supports the `kanban-tui` entrypoint besides `ktui`.

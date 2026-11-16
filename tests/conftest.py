@@ -1,4 +1,5 @@
 import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from freezegun import freeze_time
 from typing_extensions import Generator
 
 from kanban_tui.app import KanbanTui
-from kanban_tui.config import Settings, init_config
+from kanban_tui.config import Backends, Settings, init_config
 from kanban_tui.constants import AUTH_NAME, CONFIG_NAME, DATABASE_NAME
 
 
@@ -130,3 +131,71 @@ def test_app(no_task_app: KanbanTui) -> Generator[KanbanTui, None, None]:
         )
 
     yield no_task_app
+
+
+# Vault backend
+VAULT_TEMPLATE = Path(__file__).parent / "fixtures" / "vault_task_template.md"
+
+
+def write_task_note(
+    vault: Path,
+    rel_path: str,
+    frontmatter: dict[str, object] | None = None,
+    body: str = "",
+) -> Path:
+    fields = {"type": "task", "status": "pending"}
+    fields.update(frontmatter or {})
+    lines = ["---"]
+    for key, value in fields.items():
+        if value is None:
+            continue
+        lines.append(f"{key}: {value}")
+    lines += ["---", "", body]
+    path = vault / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def test_vault(tmp_path: Path) -> Generator[Path, None, None]:
+    vault = tmp_path / "vault"
+    templates = vault / "05-Templates"
+    templates.mkdir(parents=True)
+    (templates / "task.md").write_text(
+        VAULT_TEMPLATE.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    yield vault
+
+
+@pytest.fixture
+def vault_app(
+    test_vault: Path, test_config_path, test_database_path, test_config
+) -> Generator[KanbanTui, None, None]:
+    os.environ["TEXTUAL_ANIMATION"] = "none"
+    write_task_note(test_vault, "01-Projects/Alpha/tasks/one.md", {"status": "active"})
+    write_task_note(
+        test_vault,
+        "01-Projects/Alpha/tasks/two.md",
+        {"status": "pending", "board": "ready"},
+    )
+    app = KanbanTui(config_path=test_config_path, database_path=test_database_path)
+    app.config.backend.mode = Backends.VAULT
+    app.config.backend.vault_settings.vault_path = test_vault.as_posix()
+    app.backend = app.get_backend()
+    yield app
+
+
+def make_checkout(path: Path, remotes: dict[str, str] | None = None) -> Path:
+    """A real git repo at `path` with one commit and the given remotes."""
+    path.mkdir(parents=True, exist_ok=True)
+    git = ["git", "-C", path.as_posix()]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run(
+        [*git, "-c", "user.name=t", "-c", "user.email=t@t", "commit"]
+        + ["-q", "--allow-empty", "-m", "init"],
+        check=True,
+    )
+    for name, url in (remotes or {}).items():
+        subprocess.run([*git, "remote", "add", name, url], check=True)
+    return path

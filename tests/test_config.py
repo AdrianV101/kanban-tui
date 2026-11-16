@@ -95,6 +95,16 @@ def test_default_config(test_config: Settings, test_database_path: str) -> None:
                 "active_session_id": "",
                 "tasks_base_path": "~/.claude/tasks",
             },
+            "vault_settings": {
+                "vault_path": "",
+                "task_globs": ["01-Projects/*/tasks/*.md", "00-Inbox/*.md"],
+                "done_visible_days": 7,
+                "project_colors": {},
+                "personal_category": "Personal",
+                "boards": [],
+                "active_board": "",
+                "checkouts_root": "~/Projects",
+            },
             "jira_settings": {
                 "base_url": "",
                 "auth_file_path": AUTH_FILE.as_posix(),
@@ -104,6 +114,40 @@ def test_default_config(test_config: Settings, test_database_path: str) -> None:
         },
     }
     assert settings_dict == default_settings
+
+
+VAULT_BOARDS_TOML = """
+[backend.vault_settings]
+vault_path = "/vault"
+active_board = "Work"
+
+[[backend.vault_settings.boards]]
+name = "Work"
+projects = ["Acme"]
+
+[[backend.vault_settings.boards]]
+name = "Personal"
+exclude_projects = ["Acme"]
+"""
+
+
+def test_vault_boards_load_from_toml_and_save_back_unchanged(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(VAULT_BOARDS_TOML, encoding="utf-8")
+    monkeypatch.setenv("KANBAN_TUI_CONFIG_FILE", config_path.as_posix())
+
+    loaded = Settings()
+    vault = loaded.backend.vault_settings
+    assert vault.active_board == "Work"
+    assert [b.model_dump() for b in vault.boards] == [
+        {"name": "Work", "projects": ["Acme"], "exclude_projects": []},
+        {"name": "Personal", "projects": [], "exclude_projects": ["Acme"]},
+    ]
+
+    loaded.save()
+    assert Settings().model_dump() == loaded.model_dump()
 
 
 def test_config_task_append_mode_update(test_config: Settings) -> None:

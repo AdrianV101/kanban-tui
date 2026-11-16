@@ -184,7 +184,14 @@ class KanbanBoard(HorizontalScroll):
         return True
 
     def action_new_task(self) -> None:
-        self.app.push_screen(ModalTaskEditScreen(), callback=self.place_new_task)
+        column = None
+        if self.app.config.backend.mode == Backends.VAULT:
+            focused = self.app.focused
+            card_task = focused.task_ if isinstance(focused, TaskCard) else None
+            column = card_task.column if card_task else 2
+        self.app.push_screen(
+            ModalTaskEditScreen(column=column), callback=self.place_new_task
+        )
 
     async def action_show_boards(self) -> None:
         await self.app.push_screen(
@@ -194,7 +201,11 @@ class KanbanBoard(HorizontalScroll):
     async def place_new_task(self, task: Task | None) -> None:
         if not task:
             return
-        await self.query(Column)[0].place_task(task=task)
+        if self.app.config.backend.mode == Backends.VAULT:
+            target = self.query_one(f"#column_{task.column}", Column)
+        else:
+            target = self.query(Column)[0]
+        await target.place_task(task=task)
         self.selected_task = task
         self.query_one(f"#taskcard_{self.selected_task.task_id}", TaskCard).focus()
 
@@ -226,48 +237,24 @@ class KanbanBoard(HorizontalScroll):
                         ).query(TaskCard)[0].focus()
                     case _:
                         self.app.action_focus_next()
-            case "right":
-                column_id_list = list(self.app.visible_column_dict.keys())
-                column_index = column_id_list.index(self.selected_task.column)
-                new_column_index = (column_index + 1) % len(
-                    self.app.visible_column_dict
+            case "right" | "left":
+                self._focus_nearest_column_with_cards(
+                    self.selected_task.column,
+                    1 if direction == "right" else -1,
+                    row_idx,
                 )
-                new_column_id = column_id_list[new_column_index]
-                new_column_tasks = self.query_one(
-                    f"#column_{new_column_id}", Column
-                ).task_amount
-                match new_column_tasks:
-                    case 0:
-                        self.app.action_focus_next()
-                    case new_column_tasks if new_column_tasks <= row_idx:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[new_column_tasks - 1].focus()
-                    case _:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[row_idx].focus()
-            case "left":
-                column_id_list = list(self.app.visible_column_dict.keys())
-                column_index = column_id_list.index(self.selected_task.column)
-                new_column_index = (
-                    column_index + len(self.app.visible_column_dict) - 1
-                ) % len(self.app.visible_column_dict)
-                new_column_id = column_id_list[new_column_index]
-                new_column_tasks = self.query_one(
-                    f"#column_{new_column_id}", Column
-                ).task_amount
-                match new_column_tasks:
-                    case 0:
-                        self.app.action_focus_previous()
-                    case new_column_tasks if new_column_tasks <= row_idx:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[new_column_tasks - 1].focus()
-                    case _:
-                        self.query_one(f"#column_{new_column_id}", Column).query(
-                            TaskCard
-                        )[row_idx].focus()
+
+    def _focus_nearest_column_with_cards(
+        self, from_column: int, step: int, row_idx: int
+    ) -> None:
+        column_ids = list(self.app.visible_column_dict.keys())
+        start = column_ids.index(from_column)
+        for offset in range(1, len(column_ids)):
+            column_id = column_ids[(start + step * offset) % len(column_ids)]
+            column = self.query_one(f"#column_{column_id}", Column)
+            if column.task_amount:
+                column.query(TaskCard)[min(row_idx, column.task_amount - 1)].focus()
+                return
 
     @on(TaskCard.Focused)
     def get_current_card_position(self, event: TaskCard.Focused):
@@ -483,6 +470,7 @@ class KanbanBoard(HorizontalScroll):
         # Try the backend update first before modifying local state,
         # so there is nothing to revert on failure.
         original_column = self.selected_task.column
+        original_row = event.taskcard.row if event else 0
         self.selected_task.column = target_column
         target_position = (
             self.drag_target_position
@@ -544,8 +532,11 @@ class KanbanBoard(HorizontalScroll):
                 task_card.task_ = updated_task
                 task_card.refresh(recompose=True)
 
-        # Restore focus to the moved task
-        self.query_one(f"#taskcard_{moved_task_id}", TaskCard).focus()
+        if event and event.keep_selection:
+            self._select_near_removed_card(original_column, original_row)
+        else:
+            # Restore focus to the moved task
+            self.query_one(f"#taskcard_{moved_task_id}", TaskCard).focus()
 
         self.target_column = None
         self.app.app_focus = True
@@ -555,14 +546,36 @@ class KanbanBoard(HorizontalScroll):
 
     @on(TaskCard.Delete)
     async def delete_task(self, event: TaskCard.Delete):
-        await self.query_one(
-            f"#column_{event.taskcard.task_.column}", Column
-        ).remove_task(task=event.taskcard.task_)
-        self.app.backend.delete_task(task_id=event.taskcard.task_.task_id)
+        task_id = event.taskcard.task_.task_id
+        column_id = event.taskcard.task_.column
+        row_idx = event.taskcard.row
+        if self.app.config.backend.mode == Backends.VAULT:
+            from kanban_tui.backends.vault.backend import VaultWriteError
+
+            try:
+                self.app.backend.delete_task(task_id=task_id)
+            except VaultWriteError as error:
+                self.app.notify(
+                    str(error), title="Archive Task Failed", severity="error"
+                )
+                return
+        column = self.query_one(f"#column_{column_id}", Column)
+        await column.remove_task(task=event.taskcard.task_)
+        if self.app.config.backend.mode != Backends.VAULT:
+            self.app.backend.delete_task(task_id=task_id)
         self.app.update_task_list()
 
-        if not self.app.task_list:
+        if not self.app.visible_task_list:
             self.get_first_card()
+        else:
+            self._select_near_removed_card(column_id, row_idx)
+
+    def _select_near_removed_card(self, column_id: int, row_idx: int) -> None:
+        column = self.query_one(f"#column_{column_id}", Column)
+        if column.task_amount:
+            column.query(TaskCard)[min(row_idx, column.task_amount - 1)].focus()
+        else:
+            self._focus_nearest_column_with_cards(column_id, 1, row_idx)
 
     @on(MouseDown)
     def lift_task(self, event: MouseDown):

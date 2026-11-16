@@ -186,15 +186,21 @@ class ModalBoardOverviewScreen(ModalScreen):
         with Vertical():
             yield Label("Your Boards", id="label_header")
             yield BoardList()
-            yield Button(
-                "New Board",
-                id="btn_create_board",
-                variant="success",
-            )
+            if self.app.config.backend.mode != Backends.VAULT:
+                yield Button(
+                    "New Board",
+                    id="btn_create_board",
+                    variant="success",
+                )
 
             yield Footer(show_command_palette=False)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if (
+            action in ["new_board", "edit_board", "delete_board", "copy_board"]
+            and self.app.config.backend.mode == Backends.VAULT
+        ):
+            return False
         return not (
             action in ["edit_board", "delete_board", "copy_board", "dismiss"]
             and self.query_one(BoardList).highlighted_child is None

@@ -1,0 +1,16 @@
+# Copy to ~/.config/vault-board/jobs.toml and fill in.
+
+# The Obsidian vault folder.
+vault_path = "~/Documents/<vault>"
+
+# The name the sweep looks for in meeting action items.
+owner_name = "Alex"
+
+# Optional keys, shown with their defaults.
+# claude_path = "~/.local/bin/claude"
+# sweep_model = "sonnet"
+# state_path = "~/.local/state/vault-board/sweep.json"
+
+# The GitHub CLI account to use for each PR owner (user or organization).
+[gh_accounts]
+"example-org" = "work-account"
