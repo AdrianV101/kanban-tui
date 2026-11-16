@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import re
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+
+import yaml
+
+from kanban_tui.backends.vault.notes import split_frontmatter
+
+GIT_TIMEOUT_SECONDS = 2
 
 
 class SessionFolderKind(StrEnum):
@@ -43,7 +51,17 @@ def normalize_remote(url: str) -> str:
     Follows vault-pkm's `normalizeRemote`, so SSH, HTTPS and scp forms of one
     remote give the same key. Empty input gives "".
     """
-    raise NotImplementedError
+    rest = re.sub(r"^[a-z][a-z0-9+.-]*://", "", url.strip(), flags=re.IGNORECASE)
+    slash = rest.find("/")
+    authority_end = len(rest) if slash == -1 else slash
+    at = rest.rfind("@", 0, authority_end)
+    if at != -1:
+        rest = rest[at + 1 :]
+    rest = re.sub(r"^([^/:]+):\d+(?=/|$)", r"\1", rest)
+    rest = re.sub(r"^([^/:]+):", r"\1/", rest)
+    rest = re.sub(r"/+$", "", rest)
+    rest = re.sub(r"\.git$", "", rest, flags=re.IGNORECASE)
+    return re.sub(r"/+$", "", rest).lower()
 
 
 def read_repos(index_path: Path) -> tuple[str, ...]:
@@ -52,7 +70,18 @@ def read_repos(index_path: Path) -> tuple[str, ...]:
     A missing file, missing frontmatter, malformed YAML or no `repos:` key
     gives `()`. A single string counts as one entry.
     """
-    raise NotImplementedError
+    try:
+        parts = split_frontmatter(index_path.read_text(encoding="utf-8"))
+        frontmatter = yaml.safe_load(parts[0]) if parts else None
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return ()
+    repos = frontmatter.get("repos") if isinstance(frontmatter, dict) else None
+    if isinstance(repos, str):
+        repos = [repos]
+    if not isinstance(repos, list):
+        return ()
+    keys = (normalize_remote(repo) for repo in repos if isinstance(repo, str))
+    return tuple(key for key in keys if key)
 
 
 def find_checkouts(root: Path, remotes: Iterable[str]) -> list[Path]:
@@ -63,4 +92,37 @@ def find_checkouts(root: Path, remotes: Iterable[str]) -> list[Path]:
     times out are skipped. `~` in `root` is expanded. Sorted; `[]` when
     `root` does not exist.
     """
-    raise NotImplementedError
+    wanted = set(remotes)
+    root = root.expanduser()
+    if not root.is_dir():
+        return []
+    return sorted(
+        child
+        for child in root.iterdir()
+        if (child / ".git").is_dir() and wanted & checkout_remotes(child)
+    )
+
+
+def checkout_remotes(checkout: Path) -> set[str]:
+    """The normalised remotes in a main checkout's `.git/config`.
+
+    A git lookup that fails or times out gives an empty set.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "config", "--file", (checkout / ".git" / "config").as_posix()]
+            + ["--get-regexp", r"^remote\..*\.url$"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    if result.returncode != 0:
+        return set()
+    return {
+        normalize_remote(line.split(maxsplit=1)[1])
+        for line in result.stdout.splitlines()
+        if len(line.split(maxsplit=1)) == 2
+    }
