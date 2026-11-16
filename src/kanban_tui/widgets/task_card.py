@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from kanban_tui.config import Backends, MovementModes
@@ -19,9 +20,15 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Label, Markdown
 
+from kanban_tui.backends.vault.launch_session import launch_session
 from kanban_tui.backends.vault.open_note import open_note
+from kanban_tui.backends.vault.sessions import SessionFolderKind
 from kanban_tui.classes.task import Task
 from kanban_tui.modal.modal_confirm_screen import ModalConfirmScreen
+from kanban_tui.modal.modal_session_folder_screen import (
+    ModalSessionFolderScreen,
+    folder_suggestions,
+)
 from kanban_tui.modal.modal_task_screen import ModalTaskEditScreen
 from kanban_tui.utils import get_column_status_dict
 
@@ -32,6 +39,10 @@ def pr_label(link: str) -> str:
     """`#<number>` for a GitHub PR link, otherwise the link as written."""
     match = PR_NUMBER.search(link)
     return f"#{match.group(1)}" if match else link
+
+
+# Proposed, Ready and Doing in the vault backend.
+SESSION_COLUMNS = (1, 2, 3)
 
 
 class TaskCard(Vertical):
@@ -59,6 +70,7 @@ class TaskCard(Vertical):
         Binding("d", "delete_task", description="Delete", show=True),
         Binding("i", "show_blocking_tasks", description="Show Deps", show=True),
         Binding("p", "open_prs", description="PR", show=True),
+        Binding("t", "start_session", description="Tackle", show=True),
         Binding(
             "L",
             "move_task('right')",
@@ -191,6 +203,13 @@ class TaskCard(Vertical):
 
         if action == "open_prs":
             return bool(self.linked_prs())
+
+        if action == "start_session":
+            return (
+                self.app.config.backend.mode == Backends.VAULT
+                and self.task_ is not None
+                and self.task_.column in SESSION_COLUMNS
+            )
 
         if (
             action == "move_task_position"
@@ -339,6 +358,39 @@ class TaskCard(Vertical):
     def action_open_prs(self) -> None:
         for link in self.linked_prs():
             self.app.open_url(link)
+
+    def action_start_session(self) -> None:
+        task = self.task_
+        if task is None:
+            return
+        place = self.app.backend.session_folder(task)
+        if place.kind == SessionFolderKind.LINKED and place.folder is not None:
+            self.start_session_in(task, place.folder)
+        elif place.kind == SessionFolderKind.NOT_HERE:
+            self.app.notify(
+                f"No checkout of {', '.join(place.remotes)} under {place.root}. "
+                "Clone it there to start a session.",
+                severity="error",
+            )
+        elif place.kind == SessionFolderKind.SEVERAL:
+            folders = ", ".join(match.as_posix() for match in place.matches)
+            self.app.notify(
+                f"Several checkouts of {', '.join(place.remotes)} under "
+                f"{place.root}: {folders}. Keep one to start a session.",
+                severity="error",
+            )
+        else:
+            self.app.push_screen(
+                ModalSessionFolderScreen(
+                    project=place.project,
+                    suggestions=folder_suggestions(place.root),
+                ),
+                callback=lambda folder: self.start_session_in(task, folder),
+            )
+
+    def start_session_in(self, task: Task, folder: Path | None) -> None:
+        if folder is not None:
+            launch_session(self.app, folder, task.title, task.metadata["note_path"])
 
     @on(Click)
     def action_edit_task(self) -> None:
