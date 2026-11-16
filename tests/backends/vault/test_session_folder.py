@@ -121,6 +121,9 @@ def test_find_checkouts_returns_exactly_the_matching_main_checkouts(
     broken = root / "broken" / ".git"
     broken.mkdir(parents=True)
     (broken / "config").write_text('[remote "origin"\n\turl = x\n', encoding="utf-8")
+    latin = make_checkout(root / "latin")
+    with (latin / ".git" / "config").open("ab") as config:
+        config.write(b'[remote "origin"]\n\turl = https://h\xe9st/x\n')
 
     real_run = subprocess.run
 
@@ -137,8 +140,23 @@ def test_find_checkouts_returns_exactly_the_matching_main_checkouts(
     assert find_checkouts(Path("~/root"), [KEY]) == [a, b]
 
 
-def test_find_checkouts_gives_nothing_for_a_missing_root(tmp_path: Path):
-    assert find_checkouts(tmp_path / "nowhere", [KEY]) == []
+@pytest.mark.parametrize("problem", ["missing", "unreadable", "unknown-user"])
+def test_find_checkouts_gives_nothing_for_a_root_it_cannot_read(
+    tmp_path: Path, problem: str
+):
+    root = {
+        "missing": tmp_path / "nowhere",
+        "unreadable": tmp_path / "locked",
+        "unknown-user": Path("~no-such-user-xyz/Projects"),
+    }[problem]
+    if problem == "unreadable":
+        make_checkout(root / "a", {"origin": "github.com/owner/repo"})
+        root.chmod(0)
+    try:
+        assert find_checkouts(root, [KEY]) == []
+    finally:
+        if problem == "unreadable":
+            root.chmod(0o755)
 
 
 def make_backend(vault: Path, root: Path) -> VaultBackend:

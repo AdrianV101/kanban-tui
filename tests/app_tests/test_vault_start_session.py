@@ -178,18 +178,27 @@ async def test_t_on_an_unlinked_card_asks_for_a_folder(
         assert launches == []
 
 
+@pytest.mark.parametrize(
+    ("root", "expected"),
+    [("~/root", ["~/root/a", "~/root/b"]), ("~no-such-user-xyz/root", [])],
+    ids=["readable", "unknown-user"],
+)
 async def test_the_folder_question_suggests_the_folders_under_the_root(
-    card_app: KanbanTui, monkeypatch, launches, tmp_path: Path
+    card_app: KanbanTui,
+    monkeypatch,
+    launches,
+    tmp_path: Path,
+    root: str,
+    expected: list[str],
 ):
     monkeypatch.setenv("HOME", tmp_path.as_posix())
     (tmp_path / "root" / "a").mkdir(parents=True)
     (tmp_path / "root" / "b").mkdir()
     (tmp_path / "root" / "notes.txt").write_text("x", encoding="utf-8")
-    card_app.config.backend.vault_settings.checkouts_root = "~/root"
     answer(
         card_app,
         monkeypatch,
-        SessionFolder(SessionFolderKind.NO_LINK, "Alpha", "~/root"),
+        SessionFolder(SessionFolderKind.NO_LINK, "Alpha", root),
     )
 
     async with card_app.run_test(size=APP_SIZE) as pilot:
@@ -199,14 +208,20 @@ async def test_the_folder_question_suggests_the_folders_under_the_root(
         await pilot.press("t")
         await pilot.pause()
 
-        assert card_app.screen.suggestions == ["~/root/a", "~/root/b"]
+        assert isinstance(card_app.screen, ModalSessionFolderScreen)
+        assert card_app.screen.suggestions == expected
 
 
-@pytest.mark.parametrize("ending", ["submit", "escape"])
+@pytest.mark.parametrize(
+    ("ending", "typed"),
+    [("submit", "~/x"), ("submit", "x"), ("escape", "~/x")],
+    ids=["home-path", "relative-path", "escape"],
+)
 async def test_answering_the_folder_question_launches_there_and_escape_does_not(
-    card_app: KanbanTui, monkeypatch, launches, tmp_path: Path, ending: str
+    card_app: KanbanTui, monkeypatch, launches, tmp_path: Path, ending: str, typed: str
 ):
     monkeypatch.setenv("HOME", tmp_path.as_posix())
+    monkeypatch.chdir(tmp_path)
     (tmp_path / "x").mkdir()
     answer(
         card_app,
@@ -220,7 +235,7 @@ async def test_answering_the_folder_question_launches_there_and_escape_does_not(
         await pilot.press("t")
         await pilot.pause()
 
-        card_app.screen.query_one(Input).value = "~/x"
+        card_app.screen.query_one(Input).value = typed
         await pilot.press("enter" if ending == "submit" else "escape")
         await pilot.pause()
 
@@ -229,7 +244,9 @@ async def test_answering_the_folder_question_launches_there_and_escape_does_not(
         assert launches == expected
 
 
-@pytest.mark.parametrize("typed", ["missing", "file", "empty"])
+@pytest.mark.parametrize(
+    "typed", ["missing", "file", "empty", "unknown-user", "markup"]
+)
 async def test_the_folder_question_refuses_what_is_not_a_folder(
     card_app: KanbanTui, monkeypatch, launches, tmp_path: Path, typed: str
 ):
@@ -238,6 +255,8 @@ async def test_the_folder_question_refuses_what_is_not_a_folder(
         "missing": (tmp_path / "missing").as_posix(),
         "file": (tmp_path / "file.txt").as_posix(),
         "empty": "",
+        "unknown-user": "~no-such-user-xyz/frontend",
+        "markup": (tmp_path / "[/bold]").as_posix(),
     }[typed]
     answer(
         card_app,

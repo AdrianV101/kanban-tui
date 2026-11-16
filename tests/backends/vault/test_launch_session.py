@@ -149,3 +149,17 @@ def test_a_missing_program_starts_nothing_and_says_which(
     [(message, severity)] = app.notices
     assert severity == "error"
     assert f"{named} was not found" in message
+
+
+def test_a_relative_folder_reaches_kitty_as_an_absolute_path(
+    tmp_path: Path,
+    commands: list[list[str]],
+    programs: dict[str, str | None],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.chdir(tmp_path)
+
+    launch_session(FakeApp(), Path("work"), TITLE, NOTE)
+
+    [argv] = commands
+    assert argv[argv.index("--cwd") + 1] == (tmp_path / "work").as_posix()

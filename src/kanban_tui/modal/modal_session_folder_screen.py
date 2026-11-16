@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from pathlib import Path
 
+from rich.markup import escape
 from textual import on
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -47,10 +48,10 @@ class ModalSessionFolderScreen(ModalScreen[Path | None]):
     @on(Input.Submitted)
     def choose_folder(self, event: Input.Submitted) -> None:
         typed = event.value.strip()
-        folder = Path(typed).expanduser()
-        if not typed or not folder.is_dir():
+        folder = existing_folder(typed)
+        if folder is None:
             self.query_one("#session_error", Label).update(
-                f"'{typed}' is not a folder. Type an existing folder."
+                escape(f"'{typed}' is not a folder. Type an existing folder.")
             )
             return
         self.dismiss(folder)
@@ -59,15 +60,30 @@ class ModalSessionFolderScreen(ModalScreen[Path | None]):
         self.dismiss(None)
 
 
+def existing_folder(typed: str) -> Path | None:
+    """`typed` as an absolute folder path, or None when it is not a folder."""
+    if not typed:
+        return None
+    try:
+        folder = Path(typed).expanduser().absolute()
+        return folder if folder.is_dir() else None
+    except (OSError, RuntimeError):
+        return None
+
+
 def folder_suggestions(root: str) -> list[str]:
-    """The folders directly under `root`, written from `~` when under home."""
-    expanded = Path(root).expanduser()
-    if not expanded.is_dir():
+    """The folders directly under `root`, written from `~` when under home.
+
+    A root that can't be read gives no suggestions.
+    """
+    try:
+        home = Path.home()
+        children = sorted(Path(root).expanduser().iterdir())
+    except (OSError, RuntimeError):
         return []
-    home = Path.home()
     suggestions = []
-    for child in sorted(expanded.iterdir()):
-        if not child.is_dir():
+    for child in children:
+        if existing_folder(child.as_posix()) is None:
             continue
         if child.is_relative_to(home):
             suggestions.append(f"~/{child.relative_to(home).as_posix()}")

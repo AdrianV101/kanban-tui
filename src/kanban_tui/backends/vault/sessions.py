@@ -93,14 +93,23 @@ def find_checkouts(root: Path, remotes: Iterable[str]) -> list[Path]:
     `root` does not exist.
     """
     wanted = set(remotes)
-    root = root.expanduser()
-    if not root.is_dir():
+    try:
+        children = list(root.expanduser().iterdir())
+    except (OSError, RuntimeError):
         return []
     return sorted(
         child
-        for child in root.iterdir()
-        if (child / ".git").is_dir() and wanted & checkout_remotes(child)
+        for child in children
+        if is_main_checkout(child) and wanted & checkout_remotes(child)
     )
+
+
+def is_main_checkout(folder: Path) -> bool:
+    """A folder whose `.git` is a directory, so not a linked worktree."""
+    try:
+        return (folder / ".git").is_dir()
+    except OSError:
+        return False
 
 
 def checkout_remotes(checkout: Path) -> set[str]:
@@ -113,7 +122,8 @@ def checkout_remotes(checkout: Path) -> set[str]:
             ["git", "config", "--file", (checkout / ".git" / "config").as_posix()]
             + ["--get-regexp", r"^remote\..*\.url$"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=GIT_TIMEOUT_SECONDS,
             check=False,
         )

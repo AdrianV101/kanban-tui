@@ -42,7 +42,7 @@ def launch_session(
         )
         return False
     argv = [kitty, "@", "launch", "--type=tab", "--keep-focus", "--copy-env"]
-    argv += ["--tab-title", title, "--cwd", folder.as_posix()]
+    argv += ["--tab-title", title, "--cwd", folder.absolute().as_posix()]
     argv += [claude, f"/vault-pkm:tackle-task {note_path}"]
     try:
         result = subprocess.run(
